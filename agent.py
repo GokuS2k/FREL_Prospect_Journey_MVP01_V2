@@ -79,7 +79,7 @@ def _state_modifier(state: dict) -> list[BaseMessage]:
 _agent = create_react_agent(
     model=_llm,
     tools=ALL_TOOLS,
-    state_modifier=_state_modifier,
+    prompt=_state_modifier,
     checkpointer=_checkpointer,
 )
 

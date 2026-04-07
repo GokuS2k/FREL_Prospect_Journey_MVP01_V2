@@ -2,30 +2,29 @@
 # Install with: pip install -r requirements.txt
 
 # Snowflake
-snowflake-connector-python
+snowflake-connector-python==3.12.3
 
-# LangChain + LangGraph
-langchain
-langchain-core
-langchain-openai
-langgraph
+# LangChain + LangGraph (pinned to avoid breaking API changes)
+langchain==0.3.25
+langchain-core==0.3.55
+langchain-openai==0.3.16
+langgraph==0.3.21
 
-# OpenAI SDK (pulled by langchain-openai, pin for stability)
-openai
+# OpenAI SDK
+openai==1.75.0
 
 # Data handling
-pandas
-tabulate
+pandas==2.2.3
+tabulate==0.9.0
 
 # YAML parsing
-pyyaml
+pyyaml==6.0.2
 
 # Streamlit UI (1.37+ required for st.audio_input voice recording widget)
 streamlit>=1.37.0
 
 # Charts
-plotly
+plotly==5.24.1
 kaleido==0.2.1
 
-# Email
-secure-smtplib
+# Email (stdlib smtplib used directly — no extra package needed)
