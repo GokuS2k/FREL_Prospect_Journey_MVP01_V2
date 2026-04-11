@@ -565,7 +565,174 @@ def conversion_segment_chart(
 
 
 # ===========================================================================
-# 5. Intake trend (time series) — fixed DATE_TRUNC
+# 5. SFMC stage gap / fishbone chart
+# ===========================================================================
+
+def sfmc_stage_fishbone_chart(
+    target_date: str,
+    prospect_id: str | None = None,
+) -> str:
+    try:
+        prospect_filter = f"AND jd.PROSPECT_ID = '{prospect_id}'" if prospect_id else ""
+        sql = f"""
+            WITH base AS (
+                SELECT *
+                FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS jd
+                WHERE 1=1 {prospect_filter}
+            )
+            SELECT * FROM (
+                SELECT 2 AS stage_order, 'Stage 2 - Education' AS stage,
+                    COUNT(*) AS expected_count,
+                    SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END) AS sent,
+                    SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END) AS suppressed,
+                    SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END) AS unsent
+                FROM base
+                WHERE UPPER(TRIM(WELCOMEJOURNEY_WELCOMEEMAIL_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 3, TRY_TO_DATE(WELCOMEJOURNEY_WELCOMEEMAIL_SENT_DATE::STRING)) = '{target_date}'
+                UNION ALL
+                SELECT 3, 'Stage 3 - Nurture Edu 1',
+                    COUNT(*),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END)
+                FROM base
+                WHERE UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 5, TRY_TO_DATE(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT_DATE::STRING)) = '{target_date}'
+                UNION ALL
+                SELECT 4, 'Stage 4 - Nurture Edu 2',
+                    COUNT(*),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END)
+                FROM base
+                WHERE UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 8, TRY_TO_DATE(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT_DATE::STRING)) = '{target_date}'
+                UNION ALL
+                SELECT 5, 'Stage 5 - Prospect Story',
+                    COUNT(*),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END)
+                FROM base
+                WHERE UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 3, TRY_TO_DATE(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT_DATE::STRING)) = '{target_date}'
+                UNION ALL
+                SELECT 6, 'Stage 6 - Conversion',
+                    COUNT(*),
+                    SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END)
+                FROM base
+                WHERE UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 2, TRY_TO_DATE(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT_DATE::STRING)) = '{target_date}'
+                UNION ALL
+                SELECT 7, 'Stage 7 - Reminder',
+                    COUNT(*),
+                    SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(HIGHENGAGEMENT_REMINDEREMAIL_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END)
+                FROM base
+                WHERE UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 2, TRY_TO_DATE(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT_DATE::STRING)) = '{target_date}'
+                UNION ALL
+                SELECT 8, 'Stage 8 - Re-engagement',
+                    COUNT(*),
+                    SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END)
+                FROM base
+                WHERE UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 2, TRY_TO_DATE(HIGHENGAGEMENT_REMINDEREMAIL_SENT_DATE::STRING)) = '{target_date}'
+                UNION ALL
+                SELECT 9, 'Stage 9 - Final Reminder',
+                    COUNT(*),
+                    SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENTFINALREMINDEREMAIL_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(LOWENGAGEMENTFINALREMINDEREMAIL_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENTFINALREMINDEREMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENTFINALREMINDEREMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END)
+                FROM base
+                WHERE UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 2, TRY_TO_DATE(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT_DATE::STRING)) = '{target_date}'
+            )
+            ORDER BY stage_order
+        """
+        df = _df(sql, max_rows=20)
+        if df.empty:
+            return f"No stage-level expected send records were found for {target_date}."
+
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            y=df["STAGE"],
+            x=df["SENT"],
+            name="Sent",
+            orientation="h",
+            marker_color=_P["success"],
+            text=df["SENT"],
+            textposition="inside",
+        ))
+        fig.add_trace(go.Bar(
+            y=df["STAGE"],
+            x=df["SUPPRESSED"],
+            name="Suppressed",
+            orientation="h",
+            marker_color=_P["danger"],
+            text=df["SUPPRESSED"],
+            textposition="inside",
+        ))
+        fig.add_trace(go.Bar(
+            y=df["STAGE"],
+            x=df["UNSENT"],
+            name="Unsent Gap",
+            orientation="h",
+            marker_color=_P["neutral"],
+            text=df["UNSENT"],
+            textposition="inside",
+        ))
+        fig.update_layout(
+            **_layout(f"SFMC Stage Fishbone | {target_date}", height=520),
+            barmode="stack",
+            xaxis=dict(title="Expected = Sent + Suppressed + Unsent Gap", gridcolor=_P["grid"]),
+            yaxis=dict(autorange="reversed"),
+        )
+        chart_store.push(fig)
+
+        total_expected = int(df["EXPECTED_COUNT"].sum()) if "EXPECTED_COUNT" in df.columns else int((df["SENT"] + df["SUPPRESSED"] + df["UNSENT"]).sum())
+        total_sent = int(df["SENT"].sum())
+        total_suppressed = int(df["SUPPRESSED"].sum())
+        return (
+            f"SFMC stage fishbone chart generated for {target_date}. "
+            f"Expected: {total_expected:,}, Sent: {total_sent:,}, Suppressed: {total_suppressed:,}."
+        )
+    except Exception as exc:
+        logger.error("sfmc_stage_fishbone_chart: %s", exc, exc_info=True)
+        return f"Could not generate SFMC stage fishbone chart: {exc}"
+
+
+# ===========================================================================
+# 6. Intake trend (time series) — fixed DATE_TRUNC
 # ===========================================================================
 
 def intake_trend_chart(

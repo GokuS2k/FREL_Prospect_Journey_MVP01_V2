@@ -25,12 +25,16 @@ Tools exposed:
 
 from __future__ import annotations
 
+import json
 import textwrap
+from datetime import timedelta
 from typing import Optional
+
+import pandas as pd
 
 from langchain_core.tools import tool
 
-from snowflake_connector import execute_query_as_string
+from snowflake_connector import execute_query, execute_query_as_string
 
 # ---------------------------------------------------------------------------
 # Helper
@@ -38,6 +42,186 @@ from snowflake_connector import execute_query_as_string
 
 def _run(sql: str, max_rows: int = 100) -> str:
     return execute_query_as_string(sql.strip(), max_rows=max_rows)
+
+
+_SFMC_STAGE_CONFIG = [
+    {
+        "stage_order": 2,
+        "stage_name": "Stage 2 - Education Email (J01)",
+        "prev_stage_date_col": "WELCOMEJOURNEY_WELCOMEEMAIL_SENT_DATE",
+        "curr_stage_sent_col": "WELCOMEJOURNEY_EDUCATIONEMAIL_SENT",
+        "curr_stage_date_col": "WELCOMEJOURNEY_EDUCATIONEMAIL_SENT_DATE",
+        "interval_days": 3,
+    },
+    {
+        "stage_order": 3,
+        "stage_name": "Stage 3 - Nurture Education Email 1 (J02)",
+        "prev_stage_date_col": "WELCOMEJOURNEY_EDUCATIONEMAIL_SENT_DATE",
+        "curr_stage_sent_col": "NURTUREJOURNEY_EDUCATIONEMAIL1_SENT",
+        "curr_stage_date_col": "NURTUREJOURNEY_EDUCATIONEMAIL1_SENT_DATE",
+        "interval_days": 5,
+    },
+    {
+        "stage_order": 4,
+        "stage_name": "Stage 4 - Nurture Education Email 2 (J02)",
+        "prev_stage_date_col": "NURTUREJOURNEY_EDUCATIONEMAIL1_SENT_DATE",
+        "curr_stage_sent_col": "NURTUREJOURNEY_EDUCATIONEMAIL2_SENT",
+        "curr_stage_date_col": "NURTUREJOURNEY_EDUCATIONEMAIL2_SENT_DATE",
+        "interval_days": 8,
+    },
+    {
+        "stage_order": 5,
+        "stage_name": "Stage 5 - Prospect Story Email (J02)",
+        "prev_stage_date_col": "NURTUREJOURNEY_EDUCATIONEMAIL2_SENT_DATE",
+        "curr_stage_sent_col": "NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT",
+        "curr_stage_date_col": "NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT_DATE",
+        "interval_days": 3,
+    },
+    {
+        "stage_order": 6,
+        "stage_name": "Stage 6 - Conversion Email (J03)",
+        "prev_stage_date_col": "NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT_DATE",
+        "curr_stage_sent_col": "HIGHENGAGEMENT_CONVERSIONEMAIL_SENT",
+        "curr_stage_date_col": "HIGHENGAGEMENT_CONVERSIONEMAIL_SENT_DATE",
+        "interval_days": 2,
+    },
+    {
+        "stage_order": 7,
+        "stage_name": "Stage 7 - Reminder Email (J03)",
+        "prev_stage_date_col": "HIGHENGAGEMENT_CONVERSIONEMAIL_SENT_DATE",
+        "curr_stage_sent_col": "HIGHENGAGEMENT_REMINDEREMAIL_SENT",
+        "curr_stage_date_col": "HIGHENGAGEMENT_REMINDEREMAIL_SENT_DATE",
+        "interval_days": 2,
+    },
+    {
+        "stage_order": 8,
+        "stage_name": "Stage 8 - Re-engagement Email (J04)",
+        "prev_stage_date_col": "HIGHENGAGEMENT_REMINDEREMAIL_SENT_DATE",
+        "curr_stage_sent_col": "LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT",
+        "curr_stage_date_col": "LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT_DATE",
+        "interval_days": 2,
+    },
+    {
+        "stage_order": 9,
+        "stage_name": "Stage 9 - Final Reminder Email (J04)",
+        "prev_stage_date_col": "LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT_DATE",
+        "curr_stage_sent_col": "LOWENGAGEMENTFINALREMINDEREMAIL_SENT",
+        "curr_stage_date_col": "LOWENGAGEMENTFINALREMINDEREMAIL_SENT_DATE",
+        "interval_days": 2,
+    },
+]
+
+
+def _sfmc_bool(value: object) -> bool:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return False
+    return str(value).strip().upper() in {"TRUE", "T", "YES", "Y", "1"}
+
+
+def _sfmc_date(value: object):
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        return None
+    return parsed.date()
+
+
+def _fetch_sfmc_journey_detail_df(prospect_id: Optional[str] = None) -> pd.DataFrame:
+    prospect_filter = f"WHERE PROSPECT_ID = '{prospect_id}'" if prospect_id else ""
+    sql = f"""
+        SELECT
+            PROSPECT_ID,
+            SUPPRESSION_FLAG,
+            WELCOMEJOURNEY_WELCOMEEMAIL_SENT,
+            WELCOMEJOURNEY_WELCOMEEMAIL_SENT_DATE,
+            WELCOMEJOURNEY_EDUCATIONEMAIL_SENT,
+            WELCOMEJOURNEY_EDUCATIONEMAIL_SENT_DATE,
+            NURTUREJOURNEY_EDUCATIONEMAIL1_SENT,
+            NURTUREJOURNEY_EDUCATIONEMAIL1_SENT_DATE,
+            NURTUREJOURNEY_EDUCATIONEMAIL2_SENT,
+            NURTUREJOURNEY_EDUCATIONEMAIL2_SENT_DATE,
+            NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT,
+            NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT_DATE,
+            HIGHENGAGEMENT_CONVERSIONEMAIL_SENT,
+            HIGHENGAGEMENT_CONVERSIONEMAIL_SENT_DATE,
+            HIGHENGAGEMENT_REMINDEREMAIL_SENT,
+            HIGHENGAGEMENT_REMINDEREMAIL_SENT_DATE,
+            LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT,
+            LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT_DATE,
+            LOWENGAGEMENTFINALREMINDEREMAIL_SENT,
+            LOWENGAGEMENTFINALREMINDEREMAIL_SENT_DATE
+        FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+        {prospect_filter}
+    """
+    df = execute_query(sql, max_rows=500000)
+    if df is None or df.empty:
+        return pd.DataFrame()
+    df.columns = [c.upper() for c in df.columns]
+    return df
+
+
+def _compute_sfmc_stage_expectations(df: pd.DataFrame, target_date: str) -> tuple[list[dict], list[dict]]:
+    """
+    Unit-style examples:
+    1. Stage 2 expected: Stage 1 date = 2026-04-07 and target_date = 2026-04-10 => expected for Stage 2.
+    2. expected + sent: Stage 2 expected on 2026-04-10 and Stage 2 sent date = 2026-04-10 => expected_and_sent.
+    3. expected + suppressed: Stage 3 expected on 2026-04-10, Stage 3 sent = False, SUPPRESSION_FLAG = True => expected_and_suppressed.
+    4. expected + unsent: Stage 5 expected on 2026-04-10, Stage 5 sent = False, SUPPRESSION_FLAG = False => expected_but_not_sent.
+    5. not expected: previous stage date missing or interval date != target_date => not_expected.
+    """
+    target = pd.to_datetime(target_date).date()
+    stage_rows: list[dict] = []
+    drilldown_rows: list[dict] = []
+
+    for cfg in _SFMC_STAGE_CONFIG:
+        expected_count = 0
+        sent_count = 0
+        suppressed_count = 0
+        not_sent_count = 0
+
+        for row in df.to_dict(orient="records"):
+            previous_date = _sfmc_date(row.get(cfg["prev_stage_date_col"]))
+            current_sent_flag = _sfmc_bool(row.get(cfg["curr_stage_sent_col"]))
+            current_sent_date = _sfmc_date(row.get(cfg["curr_stage_date_col"]))
+            suppression_flag = _sfmc_bool(row.get("SUPPRESSION_FLAG"))
+
+            expected_date = previous_date + timedelta(days=cfg["interval_days"]) if previous_date else None
+            classification = "not_expected"
+
+            if expected_date == target:
+                expected_count += 1
+                if current_sent_flag and current_sent_date == target:
+                    sent_count += 1
+                    classification = "expected_and_sent"
+                elif suppression_flag:
+                    suppressed_count += 1
+                    classification = "expected_and_suppressed"
+                else:
+                    not_sent_count += 1
+                    classification = "expected_but_not_sent"
+
+            drilldown_rows.append({
+                "prospect_id": row.get("PROSPECT_ID"),
+                "stage_order": cfg["stage_order"],
+                "stage_name": cfg["stage_name"],
+                "previous_stage_sent_date": previous_date.isoformat() if previous_date else None,
+                "expected_date": expected_date.isoformat() if expected_date else None,
+                "actual_current_stage_sent_date": current_sent_date.isoformat() if current_sent_date else None,
+                "suppression_flag": suppression_flag,
+                "classification": classification,
+            })
+
+        stage_rows.append({
+            "stage_order": cfg["stage_order"],
+            "stage_name": cfg["stage_name"],
+            "expected_count": expected_count,
+            "sent": sent_count,
+            "suppressed": suppressed_count,
+            "not_sent": not_sent_count,
+        })
+
+    return stage_rows, drilldown_rows
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +278,10 @@ def get_funnel_metrics(start_date: str = "2020-01-01", end_date: str = "2099-12-
         f"TRY_TO_DATE(FILE_DATE::STRING,'DD-MM-YYYY'))"
         f" BETWEEN '{start_date}' AND '{end_date}'"
     )
+    raw_event_date_filter = (
+        f"TRY_TO_DATE(SPLIT(EVENT_DATE, ' ')[0]::STRING,'MM/DD/YYYY') "
+        f"BETWEEN '{start_date}' AND '{end_date}'"
+    )
     sql = textwrap.dedent(f"""
         WITH
         leads AS (
@@ -125,36 +313,91 @@ def get_funnel_metrics(start_date: str = "2020-01-01", end_date: str = "2099-12-
             WHERE d.FULL_DATE BETWEEN '{start_date}' AND '{end_date}'
         ),
         sent AS (
-            SELECT COUNT(*) AS sent_count
-            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
-            WHERE fe.EVENT_TYPE = 'SENT'
-              AND DATE(fe.EVENT_TIMESTAMP) BETWEEN '{start_date}' AND '{end_date}'
+            WITH gold AS (
+                SELECT COUNT(*) AS cnt
+                FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
+                WHERE fe.EVENT_TYPE = 'SENT'
+                  AND DATE(fe.EVENT_TIMESTAMP) BETWEEN '{start_date}' AND '{end_date}'
+            ),
+            raw AS (
+                SELECT COUNT(*) AS cnt
+                FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_SENT
+                WHERE {raw_event_date_filter}
+            )
+            SELECT CASE WHEN gold.cnt > 0 THEN gold.cnt ELSE raw.cnt END AS sent_count
+            FROM gold, raw
         ),
         opens AS (
-            SELECT COUNT(*) AS open_count,
-                   SUM(CASE WHEN IS_UNIQUE = 1 THEN 1 ELSE 0 END) AS unique_open_count
-            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
-            WHERE fe.EVENT_TYPE = 'OPEN'
-              AND DATE(fe.EVENT_TIMESTAMP) BETWEEN '{start_date}' AND '{end_date}'
+            WITH gold AS (
+                SELECT
+                    COUNT(*) AS open_count,
+                    SUM(CASE WHEN IS_UNIQUE = 1 THEN 1 ELSE 0 END) AS unique_open_count
+                FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
+                WHERE fe.EVENT_TYPE = 'OPEN'
+                  AND DATE(fe.EVENT_TIMESTAMP) BETWEEN '{start_date}' AND '{end_date}'
+            ),
+            raw AS (
+                SELECT
+                    COUNT(*) AS open_count,
+                    COUNT(DISTINCT SUBSCRIBER_KEY) AS unique_open_count
+                FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_OPENS
+                WHERE {raw_event_date_filter}
+            )
+            SELECT
+                CASE WHEN gold.open_count > 0 THEN gold.open_count ELSE raw.open_count END AS open_count,
+                CASE WHEN COALESCE(gold.unique_open_count, 0) > 0 THEN gold.unique_open_count ELSE raw.unique_open_count END AS unique_open_count
+            FROM gold, raw
         ),
         clicks AS (
-            SELECT COUNT(*) AS click_count,
-                   SUM(CASE WHEN IS_UNIQUE = 1 THEN 1 ELSE 0 END) AS unique_click_count
-            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
-            WHERE fe.EVENT_TYPE = 'CLICK'
-              AND DATE(fe.EVENT_TIMESTAMP) BETWEEN '{start_date}' AND '{end_date}'
+            WITH gold AS (
+                SELECT
+                    COUNT(*) AS click_count,
+                    SUM(CASE WHEN IS_UNIQUE = 1 THEN 1 ELSE 0 END) AS unique_click_count
+                FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
+                WHERE fe.EVENT_TYPE = 'CLICK'
+                  AND DATE(fe.EVENT_TIMESTAMP) BETWEEN '{start_date}' AND '{end_date}'
+            ),
+            raw AS (
+                SELECT
+                    COUNT(*) AS click_count,
+                    COUNT(DISTINCT SUBSCRIBER_KEY) AS unique_click_count
+                FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_CLICKS
+                WHERE {raw_event_date_filter}
+            )
+            SELECT
+                CASE WHEN gold.click_count > 0 THEN gold.click_count ELSE raw.click_count END AS click_count,
+                CASE WHEN COALESCE(gold.unique_click_count, 0) > 0 THEN gold.unique_click_count ELSE raw.unique_click_count END AS unique_click_count
+            FROM gold, raw
         ),
         bounces AS (
-            SELECT COUNT(*) AS bounce_count
-            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
-            WHERE fe.EVENT_TYPE = 'BOUNCE'
-              AND DATE(fe.EVENT_TIMESTAMP) BETWEEN '{start_date}' AND '{end_date}'
+            WITH gold AS (
+                SELECT COUNT(*) AS cnt
+                FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
+                WHERE fe.EVENT_TYPE = 'BOUNCE'
+                  AND DATE(fe.EVENT_TIMESTAMP) BETWEEN '{start_date}' AND '{end_date}'
+            ),
+            raw AS (
+                SELECT COUNT(*) AS cnt
+                FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_BOUNCES
+                WHERE {raw_event_date_filter}
+            )
+            SELECT CASE WHEN gold.cnt > 0 THEN gold.cnt ELSE raw.cnt END AS bounce_count
+            FROM gold, raw
         ),
         unsubs AS (
-            SELECT COUNT(*) AS unsubscribe_count
-            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
-            WHERE fe.EVENT_TYPE = 'UNSUBSCRIBE'
-              AND DATE(fe.EVENT_TIMESTAMP) BETWEEN '{start_date}' AND '{end_date}'
+            WITH gold AS (
+                SELECT COUNT(*) AS cnt
+                FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
+                WHERE fe.EVENT_TYPE = 'UNSUBSCRIBE'
+                  AND DATE(fe.EVENT_TIMESTAMP) BETWEEN '{start_date}' AND '{end_date}'
+            ),
+            raw AS (
+                SELECT COUNT(*) AS cnt
+                FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_UNSUBSCRIBES
+                WHERE {raw_event_date_filter}
+            )
+            SELECT CASE WHEN gold.cnt > 0 THEN gold.cnt ELSE raw.cnt END AS unsubscribe_count
+            FROM gold, raw
         ),
         suppressed AS (
             SELECT COUNT(*) AS suppressed_count
@@ -1231,6 +1474,112 @@ def get_sfmc_stage_suppression(
         WHERE 1=1 {prospect_filter}
         ORDER BY stage
     """)
+    if target_date:
+        stage_summary_sql = textwrap.dedent(f"""
+            WITH base AS (
+                SELECT *
+                FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS jd
+                WHERE 1=1 {prospect_filter}
+            )
+            SELECT * FROM (
+                SELECT 2 AS stage_order, 'Stage 2 - Education Email (J01)' AS stage,
+                    COUNT(*) AS expected_count,
+                    SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END) AS sent,
+                    SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END) AS suppressed,
+                    SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END) AS not_sent
+                FROM base
+                WHERE UPPER(TRIM(WELCOMEJOURNEY_WELCOMEEMAIL_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 3, TRY_TO_DATE(WELCOMEJOURNEY_WELCOMEEMAIL_SENT_DATE::STRING)) = '{target_date}'
+                UNION ALL
+                SELECT 3, 'Stage 3 - Nurture Edu Email 1 (J02)',
+                    COUNT(*),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END)
+                FROM base
+                WHERE UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 5, TRY_TO_DATE(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT_DATE::STRING)) = '{target_date}'
+                UNION ALL
+                SELECT 4, 'Stage 4 - Nurture Edu Email 2 (J02)',
+                    COUNT(*),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END)
+                FROM base
+                WHERE UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 8, TRY_TO_DATE(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT_DATE::STRING)) = '{target_date}'
+                UNION ALL
+                SELECT 5, 'Stage 5 - Prospect Story Email (J02)',
+                    COUNT(*),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END)
+                FROM base
+                WHERE UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 3, TRY_TO_DATE(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT_DATE::STRING)) = '{target_date}'
+                UNION ALL
+                SELECT 6, 'Stage 6 - Conversion Email (J03)',
+                    COUNT(*),
+                    SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END)
+                FROM base
+                WHERE UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 2, TRY_TO_DATE(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT_DATE::STRING)) = '{target_date}'
+                UNION ALL
+                SELECT 7, 'Stage 7 - Reminder Email (J03)',
+                    COUNT(*),
+                    SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(HIGHENGAGEMENT_REMINDEREMAIL_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END)
+                FROM base
+                WHERE UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 2, TRY_TO_DATE(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT_DATE::STRING)) = '{target_date}'
+                UNION ALL
+                SELECT 8, 'Stage 8 - Re-engagement Email (J04)',
+                    COUNT(*),
+                    SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END)
+                FROM base
+                WHERE UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 2, TRY_TO_DATE(HIGHENGAGEMENT_REMINDEREMAIL_SENT_DATE::STRING)) = '{target_date}'
+                UNION ALL
+                SELECT 9, 'Stage 9 - Final Reminder Email (J04)',
+                    COUNT(*),
+                    SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENTFINALREMINDEREMAIL_SENT)) = 'TRUE'
+                              AND TRY_TO_DATE(LOWENGAGEMENTFINALREMINDEREMAIL_SENT_DATE::STRING) = '{target_date}' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENTFINALREMINDEREMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENTFINALREMINDEREMAIL_SENT)) != 'TRUE'
+                              AND UPPER(TRIM(SUPPRESSION_FLAG)) NOT IN ('YES','Y','TRUE','1') THEN 1 ELSE 0 END)
+                FROM base
+                WHERE UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT)) = 'TRUE'
+                  AND DATEADD(DAY, 2, TRY_TO_DATE(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT_DATE::STRING)) = '{target_date}'
+            )
+            ORDER BY stage_order
+        """)
     stage_result = _run(stage_summary_sql, max_rows=9)
 
     # --- PART 2: Per-suppressed-prospect: last stage reached + unsubscribe reason ---
@@ -1576,6 +1925,27 @@ def chart_intake_trend(
     return _charts.intake_trend_chart(start_date, end_date, group_by)
 
 
+@tool
+def chart_sfmc_stage_fishbone(
+    target_date: str,
+    prospect_id: Optional[str] = None,
+) -> str:
+    """
+    Generate a stage-by-stage fishbone-style chart for expected vs sent vs suppressed SFMC sends.
+
+    Use this when the user asks:
+    - "How many stage 3 emails were expected today vs actually sent?"
+    - "Show stage dips between journeys"
+    - "Visualise suppression between stages"
+    - "Show a fishbone chart for today's expected vs actual sends"
+
+    Args:
+        target_date: Required business date in YYYY-MM-DD format.
+        prospect_id: Optional FIP... prospect id for a single-prospect trace.
+    """
+    return _charts.sfmc_stage_fishbone_chart(target_date, prospect_id)
+
+
 # ---------------------------------------------------------------------------
 # Tool registry
 # ---------------------------------------------------------------------------
@@ -1600,6 +1970,7 @@ ALL_TOOLS = [
     chart_engagement,
     chart_conversion_segments,
     chart_intake_trend,
+    chart_sfmc_stage_fishbone,
 ]
 
 

@@ -112,6 +112,16 @@ def _fetch_funnel_kpis(s: date, e: date, channel: str) -> dict[str, int]:
     ch = _chan_where(channel)
     leads     = _scalar(_run(f"SELECT COUNT(*) FROM FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE WHERE {_date_flt('FILE_DATE',s,e)}{ch}"))
     prospects = _scalar(_run(f"SELECT COUNT(*) FROM FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER  WHERE {_date_flt('FILE_DATE',s,e)}{ch}"))
+    dq_passed = _scalar(_run(f"""
+        SELECT COUNT(*)
+        FROM FIPSAR_DW.SILVER.SLV_PROSPECT_MASTER
+        WHERE {_date_flt('FILE_DATE', s, e)}
+    """))
+    sfmc_load = _scalar(_run(f"""
+        SELECT COUNT(*)
+        FROM FIPSAR_DW.GOLD.DIM_PROSPECT
+        WHERE {_date_flt('FIRST_INTAKE_DATE', s, e)}
+    """))
 
     # Invalid leads: query DQ_REJECTION_LOG directly for intake-stage rejections.
     # Arithmetic (leads - prospects) diverges when FILE_DATE in PHI_PROSPECT_MASTER
@@ -134,7 +144,13 @@ def _fetch_funnel_kpis(s: date, e: date, channel: str) -> dict[str, int]:
         {ch.replace('AND UPPER(CHANNEL)', 'AND UPPER(TRY_PARSE_JSON(REJECTED_RECORD):CHANNEL::STRING)') if ch else ''}
     """))
 
-    return {"leads": leads, "prospects": prospects, "invalid": invalid}
+    return {
+        "leads": leads,
+        "invalid": invalid,
+        "prospects": prospects,
+        "dq_passed": dq_passed,
+        "sfmc_load": sfmc_load,
+    }
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -380,16 +396,24 @@ _BASE_LAYOUT = dict(
 )
 
 
-def _chart_lead_funnel(leads: int, prospects: int, invalid: int) -> go.Figure:
-    colors = [_BLUE, _GREEN, _RED]
+def _chart_lead_funnel(
+    leads: int,
+    invalid: int,
+    prospects: int,
+    dq_passed: int,
+    sfmc_load: int,
+) -> go.Figure:
+    labels = ["Leads", "Invalid Leads", "Prospects", "DQ Passed", "SFMC load"]
+    values = [leads, invalid, prospects, dq_passed, sfmc_load]
+    colors = [_BLUE, _RED, _GREEN, _CYAN, _PURPLE]
     fig = go.Figure(go.Bar(
-        x=["Leads", "Prospects", "Invalid Leads"],
-        y=[leads, prospects, invalid],
+        x=labels,
+        y=values,
         marker=dict(
             color=colors,
             line=dict(color="rgba(255,255,255,0.6)", width=1.5),
         ),
-        text=[f"{v:,}" for v in [leads, prospects, invalid]],
+        text=[f"{v:,}" for v in values],
         textposition="outside",
         textfont=dict(size=13, color="#1e293b", family="Inter, Arial, sans-serif"),
         width=0.5,
@@ -838,7 +862,13 @@ def render_analytics_dashboard() -> None:
         c1, c2 = st.columns(2, gap="medium")
         with c1:
             st.plotly_chart(
-                _chart_lead_funnel(funnel["leads"], funnel["prospects"], funnel["invalid"]),
+                _chart_lead_funnel(
+                    funnel["leads"],
+                    funnel["invalid"],
+                    funnel["prospects"],
+                    funnel["dq_passed"],
+                    funnel["sfmc_load"],
+                ),
                 use_container_width=True, config={"displayModeBar": False},
             )
         with c2:

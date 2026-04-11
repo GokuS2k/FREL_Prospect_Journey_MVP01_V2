@@ -46,249 +46,110 @@ logging.basicConfig(level=logging.WARNING)
 
 st.markdown("""
 <style>
-/* ── Fonts & base ──────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   FIPSAR Intelligence — Tesla-Gemini UI Design System
+   Palette: Navy #0d2a5e · Blue #1a4a9e · Sky #4a90d9 · Green #16a34a
+            Red #dc2626 · Cyan #06b6d4 · Purple #7c3aed · Amber #d97706
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Fonts & base ───────────────────────────────────────────────────────── */
 html, body, [class*="css"] {
-    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+    font-family: 'Inter', 'Segoe UI', system-ui, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
 }
 .block-container {
-    padding-top: 1.2rem !important;
-    padding-bottom: 2rem !important;
-    max-width: 1420px;
+    padding-top: 0.6rem !important;
+    padding-bottom: 2.5rem !important;
+    max-width: 1480px;
 }
 
-/* ── Page background ───────────────────────────────────────────────────── */
-[data-testid="stMain"] {
-    background-color: #f4f6fb;
-}
-[data-testid="stMain"] > div {
-    background-color: #f4f6fb;
-}
+/* ── Page background — clean off-white ─────────────────────────────────── */
+[data-testid="stMain"]       { background: #f5f7fc; }
+[data-testid="stMain"] > div { background: #f5f7fc; }
 
-/* ── Sidebar ───────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════
+   SIDEBAR — Deep navy gradient, premium feel
+   ══════════════════════════════════════════════════════════════════════════ */
 [data-testid="stSidebar"] {
-    background: linear-gradient(175deg, #0b2151 0%, #1a3f8f 60%, #1a4a9e 100%) !important;
+    background: linear-gradient(168deg, #070f22 0%, #0d2050 40%, #0f2a6b 70%, #1a3f8f 100%) !important;
     border-right: none !important;
+    box-shadow: 4px 0 24px rgba(7,15,34,0.35) !important;
 }
-[data-testid="stSidebar"] > div {
-    background: transparent !important;
-}
-/* All sidebar text */
+[data-testid="stSidebar"] > div { background: transparent !important; }
+
 [data-testid="stSidebar"] p,
 [data-testid="stSidebar"] span,
 [data-testid="stSidebar"] label,
 [data-testid="stSidebar"] small,
-[data-testid="stSidebar"] li {
-    color: #cdd8f0 !important;
-}
+[data-testid="stSidebar"] li    { color: #b8cef2 !important; }
+
 [data-testid="stSidebar"] h1 {
     color: #ffffff !important;
-    font-size: 1.15rem !important;
+    font-size: 1.1rem !important;
     font-weight: 800 !important;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.4px;
 }
 [data-testid="stSidebar"] h2,
 [data-testid="stSidebar"] h3 {
-    color: #8fb4e8 !important;
-    font-size: 0.72rem !important;
+    color: #7aa8e0 !important;
+    font-size: 0.68rem !important;
     font-weight: 700 !important;
     text-transform: uppercase !important;
-    letter-spacing: 1.2px !important;
+    letter-spacing: 1.4px !important;
 }
 [data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
-    color: #7a9fd4 !important;
-    font-size: 0.73rem !important;
+    color: #6d96cc !important;
+    font-size: 0.71rem !important;
 }
 [data-testid="stSidebar"] hr {
-    border-color: rgba(255,255,255,0.14) !important;
+    border-color: rgba(255,255,255,0.10) !important;
     margin: 10px 0 !important;
 }
-/* Sidebar buttons */
+
+/* Sidebar buttons — ghost style */
 [data-testid="stSidebar"] .stButton > button {
-    background: rgba(255,255,255,0.10) !important;
-    color: #dde8fc !important;
-    border: 1px solid rgba(255,255,255,0.22) !important;
+    background: rgba(255,255,255,0.07) !important;
+    color: #cce0ff !important;
+    border: 1px solid rgba(255,255,255,0.16) !important;
     border-radius: 8px !important;
-    font-size: 0.76rem !important;
+    font-size: 0.74rem !important;
     font-weight: 600 !important;
     padding: 6px 10px !important;
-    transition: background 0.2s, border-color 0.2s !important;
+    transition: all 0.18s ease !important;
+    letter-spacing: 0.2px !important;
 }
 [data-testid="stSidebar"] .stButton > button:hover {
-    background: rgba(255,255,255,0.20) !important;
-    border-color: rgba(255,255,255,0.40) !important;
+    background: rgba(255,255,255,0.16) !important;
+    border-color: rgba(255,255,255,0.36) !important;
     color: #ffffff !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.20) !important;
 }
+
 /* Sidebar expanders */
 [data-testid="stSidebar"] [data-testid="stExpander"] {
-    background: rgba(255,255,255,0.07) !important;
-    border: 1px solid rgba(255,255,255,0.13) !important;
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid rgba(255,255,255,0.10) !important;
     border-radius: 8px !important;
 }
-[data-testid="stSidebar"] [data-testid="stExpander"] summary {
-    color: #c0d4f0 !important;
-    font-size: 0.78rem !important;
-}
-/* Sidebar expander button rows */
+[data-testid="stSidebar"] [data-testid="stExpander"] summary { color: #b0c8f0 !important; font-size: 0.76rem !important; }
 [data-testid="stSidebar"] [data-testid="stExpander"] .stButton > button {
-    background: rgba(255,255,255,0.06) !important;
-    font-size: 0.73rem !important;
+    background: rgba(255,255,255,0.05) !important;
+    font-size: 0.72rem !important;
     text-align: left !important;
     padding: 5px 8px !important;
     border-radius: 6px !important;
     white-space: normal !important;
     height: auto !important;
-    line-height: 1.3 !important;
+    line-height: 1.35 !important;
 }
 [data-testid="stSidebar"] [data-testid="stExpander"] .stButton > button:hover {
-    background: rgba(255,255,255,0.18) !important;
+    background: rgba(255,255,255,0.16) !important;
 }
-/* Sidebar success/error/info/warning */
 [data-testid="stSidebar"] [data-testid="stAlert"] {
-    background: rgba(255,255,255,0.09) !important;
+    background: rgba(255,255,255,0.07) !important;
     border-radius: 8px !important;
-    border-left: 3px solid rgba(255,255,255,0.4) !important;
+    border-left: 3px solid rgba(255,255,255,0.35) !important;
 }
-
-/* ── Sticky tab bar ─────────────────────────────────────────────────────── */
-[data-testid="stTabs"] > div:first-child {
-    position: sticky;
-    top: 0;
-    z-index: 999;
-    background-color: #f4f6fb !important;
-    padding: 12px 0 2px 0;
-    box-shadow: 0 4px 14px rgba(13,42,94,0.10);
-}
-/* Tab list pill container */
-[data-baseweb="tab-list"] {
-    background: #ffffff !important;
-    border-radius: 16px !important;
-    padding: 6px !important;
-    gap: 4px !important;
-    box-shadow: 0 4px 20px rgba(13,42,94,0.12) !important;
-    border: 1.5px solid #d4ddf0 !important;
-}
-/* Inactive tab — visible bordered pill */
-[data-baseweb="tab"] {
-    background: #f8fafd !important;
-    border-radius: 12px !important;
-    padding: 11px 28px !important;
-    font-weight: 700 !important;
-    font-size: 0.875rem !important;
-    color: #4a5878 !important;
-    border: 1.5px solid #dde6f5 !important;
-    transition: all 0.20s ease !important;
-    letter-spacing: 0.15px !important;
-}
-[data-baseweb="tab"]:hover {
-    background: #edf2ff !important;
-    color: #0d2a5e !important;
-    border-color: #a8bde8 !important;
-    box-shadow: 0 2px 8px rgba(13,42,94,0.10) !important;
-}
-/* Active tab — solid navy gradient */
-[aria-selected="true"][data-baseweb="tab"] {
-    background: linear-gradient(135deg, #0d2a5e 0%, #1a4a9e 100%) !important;
-    color: #ffffff !important;
-    box-shadow: 0 4px 14px rgba(13,42,94,0.38) !important;
-    border-color: transparent !important;
-}
-[data-baseweb="tab-highlight"] {
-    background-color: transparent !important;
-    height: 0 !important;
-}
-[data-baseweb="tab-border"] {
-    display: none !important;
-}
-
-/* ── Chat messages ──────────────────────────────────────────────────────── */
-[data-testid="stChatMessage"] {
-    border-radius: 14px !important;
-    box-shadow: 0 2px 10px rgba(13,42,94,0.07) !important;
-    margin: 4px 0 10px 0 !important;
-    border: 1px solid #e8ecf4 !important;
-    background: #ffffff !important;
-    padding: 4px 8px !important;
-}
-
-/* ── Chat input ─────────────────────────────────────────────────────────── */
-[data-testid="stChatInput"] {
-    border-radius: 14px !important;
-    box-shadow: 0 2px 12px rgba(13,42,94,0.10) !important;
-    border: 1.5px solid #dde4f0 !important;
-    background: #ffffff !important;
-}
-[data-testid="stChatInput"]:focus-within {
-    border-color: #1a4a9e !important;
-    box-shadow: 0 0 0 3px rgba(26,74,158,0.10), 0 2px 12px rgba(13,42,94,0.10) !important;
-}
-
-/* ── Main area buttons ──────────────────────────────────────────────────── */
-.stButton > button {
-    border-radius: 9px !important;
-    font-weight: 600 !important;
-    font-size: 0.82rem !important;
-    transition: all 0.18s ease !important;
-    padding: 6px 14px !important;
-}
-
-/* ── Plotly chart wrapper ───────────────────────────────────────────────── */
-[data-testid="stPlotlyChart"] {
-    background: #ffffff !important;
-    border-radius: 14px !important;
-    box-shadow: 0 2px 14px rgba(13,42,94,0.08) !important;
-    border: 1px solid #e8ecf4 !important;
-    padding: 6px !important;
-}
-
-/* ── Expanders ──────────────────────────────────────────────────────────── */
-[data-testid="stExpander"] {
-    border-radius: 10px !important;
-    border: 1px solid #e2e8f0 !important;
-    background: #ffffff !important;
-}
-
-/* ── Info / success / warning / error alerts ────────────────────────────── */
-[data-testid="stAlert"] {
-    border-radius: 10px !important;
-}
-[data-testid="stAlert"][kind="info"] {
-    background: #eff6ff !important;
-    border-color: #bfdbfe !important;
-}
-[data-testid="stAlert"][kind="success"] {
-    background: #f0fdf4 !important;
-    border-color: #bbf7d0 !important;
-}
-[data-testid="stAlert"][kind="warning"] {
-    background: #fffbeb !important;
-    border-color: #fde68a !important;
-}
-
-/* ── Dividers ───────────────────────────────────────────────────────────── */
-[data-testid="stHorizontalBlock"] hr {
-    border-color: #e2e8f0 !important;
-    margin: 8px 0 !important;
-}
-
-/* ── Custom scrollbar ───────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 8px; }
-::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: #64748b; }
-
-/* ── Spinner text ───────────────────────────────────────────────────────── */
-[data-testid="stSpinner"] > div {
-    color: #1a4a9e !important;
-}
-
-/* ── Select boxes & date inputs ─────────────────────────────────────────── */
-[data-testid="stSelectbox"] > div > div,
-[data-testid="stDateInput"] > div > div {
-    border-radius: 9px !important;
-    border-color: #dde4f0 !important;
-}
-
-/* ── Sidebar logo image — center and remove white bg ───────────────────── */
 [data-testid="stSidebar"] [data-testid="stImage"] {
     display: flex !important;
     justify-content: center !important;
@@ -296,19 +157,165 @@ html, body, [class*="css"] {
 }
 [data-testid="stSidebar"] [data-testid="stImage"] img {
     border-radius: 10px !important;
-    background: rgba(255,255,255,0.10) !important;
+    background: rgba(255,255,255,0.08) !important;
     padding: 6px !important;
 }
+[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] { gap: 0 !important; padding: 0 !important; }
+[data-testid="stSidebar"] .stImage > img { max-width: 80px !important; }
 
-/* ── Sidebar logo column — remove padding that creates gap ─────────────── */
-[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] {
-    gap: 0 !important;
-    padding: 0 !important;
+/* ══════════════════════════════════════════════════════════════════════════
+   TAB BAR — Tesla: ultra-clean, purposeful
+   ══════════════════════════════════════════════════════════════════════════ */
+[data-testid="stTabs"] > div:first-child {
+    position: sticky;
+    top: 0;
+    z-index: 999;
+    background: #f5f7fc !important;
+    padding: 10px 0 6px;
+    border-bottom: 1px solid rgba(13,42,94,0.07);
+}
+[data-baseweb="tab-list"] {
+    background: rgba(255,255,255,0.96) !important;
+    border-radius: 14px !important;
+    padding: 5px !important;
+    gap: 3px !important;
+    box-shadow: 0 1px 16px rgba(13,42,94,0.09), 0 0 0 1px rgba(13,42,94,0.06) !important;
+    border: none !important;
+}
+[data-baseweb="tab"] {
+    background: transparent !important;
+    border-radius: 10px !important;
+    padding: 10px 26px !important;
+    font-weight: 600 !important;
+    font-size: 0.85rem !important;
+    color: #64748b !important;
+    border: none !important;
+    transition: all 0.15s ease !important;
+    letter-spacing: 0.1px !important;
+}
+[data-baseweb="tab"]:hover {
+    background: rgba(13,42,94,0.06) !important;
+    color: #0d2a5e !important;
+}
+[aria-selected="true"][data-baseweb="tab"] {
+    background: linear-gradient(135deg, #0d2a5e 0%, #1a4a9e 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 3px 12px rgba(13,42,94,0.28) !important;
+    font-weight: 700 !important;
+}
+[data-baseweb="tab-highlight"] { background: transparent !important; height: 0 !important; }
+[data-baseweb="tab-border"]    { display: none !important; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CHAT — Gemini-inspired interface
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Base message bubble */
+[data-testid="stChatMessage"] {
+    border-radius: 18px !important;
+    margin: 4px 0 10px !important;
+    padding: 2px 10px !important;
+    border: 1px solid #eaeff8 !important;
+    background: #ffffff !important;
+    box-shadow: 0 1px 8px rgba(13,42,94,0.06) !important;
+    transition: box-shadow 0.15s ease !important;
 }
 
-/* ── Remove default streamlit image border/bg ───────────────────────────── */
-[data-testid="stSidebar"] .stImage > img {
-    max-width: 80px !important;
+/* USER message — navy gradient pill (Gemini right-hand style) */
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]),
+[data-testid="stChatMessage"]:has([aria-label*="user" i]) {
+    background: linear-gradient(135deg, #0d2a5e 0%, #1a4a9e 100%) !important;
+    border-color: transparent !important;
+    box-shadow: 0 2px 16px rgba(13,42,94,0.22) !important;
+}
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) p,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) .stMarkdown p,
+[data-testid="stChatMessage"]:has([aria-label*="user" i]) p,
+[data-testid="stChatMessage"]:has([aria-label*="user" i]) .stMarkdown p {
+    color: #e8f0fe !important;
+}
+
+/* ASSISTANT message — white with left accent */
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]),
+[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) {
+    background: #ffffff !important;
+    border-left: 3px solid #1a4a9e !important;
+    border-top: 1px solid #eaeff8 !important;
+    border-right: 1px solid #eaeff8 !important;
+    border-bottom: 1px solid #eaeff8 !important;
+}
+
+/* Chat input — Gemini pill style */
+[data-testid="stChatInput"] {
+    border-radius: 28px !important;
+    box-shadow: 0 2px 20px rgba(13,42,94,0.10) !important;
+    border: 2px solid #dde4f0 !important;
+    background: #ffffff !important;
+    transition: all 0.2s ease !important;
+}
+[data-testid="stChatInput"]:focus-within {
+    border-color: #1a4a9e !important;
+    box-shadow: 0 0 0 4px rgba(26,74,158,0.08), 0 2px 20px rgba(13,42,94,0.10) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BUTTONS — Tesla minimal: clean, purposeful
+   ══════════════════════════════════════════════════════════════════════════ */
+.stButton > button {
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 0.81rem !important;
+    transition: all 0.15s ease !important;
+    padding: 6px 14px !important;
+    letter-spacing: 0.15px !important;
+}
+.stButton > button:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(13,42,94,0.14) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CHARTS — clean floating cards
+   ══════════════════════════════════════════════════════════════════════════ */
+[data-testid="stPlotlyChart"] {
+    background: #ffffff !important;
+    border-radius: 16px !important;
+    box-shadow: 0 1px 16px rgba(13,42,94,0.07) !important;
+    border: 1px solid #eaeff8 !important;
+    padding: 4px !important;
+}
+
+/* ── Expanders ──────────────────────────────────────────────────────────── */
+[data-testid="stExpander"] {
+    border-radius: 12px !important;
+    border: 1px solid #e8edf5 !important;
+    background: #ffffff !important;
+    box-shadow: 0 1px 6px rgba(13,42,94,0.04) !important;
+}
+
+/* ── Alerts ─────────────────────────────────────────────────────────────── */
+[data-testid="stAlert"] { border-radius: 10px !important; }
+
+/* ── Inputs & Selects ───────────────────────────────────────────────────── */
+[data-testid="stSelectbox"] > div > div,
+[data-testid="stDateInput"] > div > div {
+    border-radius: 8px !important;
+    border-color: #dde4f0 !important;
+}
+
+/* ── Custom scrollbar ───────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 8px; }
+::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+/* ── Spinner ────────────────────────────────────────────────────────────── */
+[data-testid="stSpinner"] > div { color: #1a4a9e !important; }
+
+/* ── Dividers ───────────────────────────────────────────────────────────── */
+[data-testid="stHorizontalBlock"] hr {
+    border-color: #e8edf5 !important;
+    margin: 6px 0 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -625,22 +632,37 @@ with tab_analytics:
 
 with tab_chat:
 
-    # Page header
+    # Gemini-style header — minimal, dark, purposeful
     st.markdown("""
-    <div style="background:linear-gradient(135deg,#0d2a5e 0%,#1a4a9e 100%);
-         border-radius:16px;padding:22px 28px;margin-bottom:20px;
-         box-shadow:0 4px 20px rgba(13,42,94,0.22)">
-        <div style="display:flex;align-items:center;gap:14px">
-            <div style="font-size:2rem">💬</div>
+    <div style="background:linear-gradient(135deg,#070f22 0%,#0d2a5e 50%,#1a4a9e 100%);
+         border-radius:20px;padding:24px 32px;margin-bottom:18px;
+         box-shadow:0 6px 28px rgba(7,15,34,0.28);
+         display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:16px">
+            <div style="width:42px;height:42px;background:rgba(255,255,255,0.10);
+                        border-radius:50%;display:flex;align-items:center;justify-content:center;
+                        font-size:1.3rem;flex-shrink:0">💬</div>
             <div>
-                <div style="font-size:1.25rem;font-weight:800;color:#ffffff;letter-spacing:0.3px">
+                <div style="font-size:1.2rem;font-weight:800;color:#ffffff;
+                            letter-spacing:0.2px;line-height:1.2">
                     Prospect Journey Intelligence
                 </div>
-                <div style="font-size:0.82rem;color:#a8c4f0;margin-top:3px">
-                    Ask anything about lead intake · prospect mastering · SFMC journeys ·
-                    engagement events · data quality · AI scores · funnel drop-offs
+                <div style="font-size:0.78rem;color:#7aa8e0;margin-top:5px;
+                            display:flex;gap:16px;flex-wrap:wrap">
+                    <span>Lead Intake</span>
+                    <span style="color:#2a4a7f">·</span>
+                    <span>SFMC Journeys</span>
+                    <span style="color:#2a4a7f">·</span>
+                    <span>Engagement Events</span>
+                    <span style="color:#2a4a7f">·</span>
+                    <span>AI Scores</span>
                 </div>
             </div>
+        </div>
+        <div style="font-size:0.68rem;color:#3d5f8a;font-weight:600;text-align:right;
+                    letter-spacing:0.5px;text-transform:uppercase">
+            GPT-4o · LangGraph<br>
+            <span style="color:#1a3a6e">Snowflake</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -650,14 +672,18 @@ with tab_chat:
     with chat_container:
         if not st.session_state.messages:
             st.markdown("""
-            <div style="text-align:center;padding:50px 20px 40px;color:#94a3b8">
-                <div style="font-size:3rem;margin-bottom:12px">🧠</div>
-                <div style="font-size:1rem;font-weight:600;color:#64748b;margin-bottom:6px">
-                    No conversation yet
+            <div style="text-align:center;padding:60px 20px 48px;color:#94a3b8">
+                <div style="width:64px;height:64px;margin:0 auto 16px;
+                            background:linear-gradient(135deg,#f0f4ff,#e8eeff);
+                            border-radius:50%;display:flex;align-items:center;
+                            justify-content:center;font-size:1.8rem;
+                            box-shadow:0 4px 16px rgba(13,42,94,0.10)">🧠</div>
+                <div style="font-size:1rem;font-weight:700;color:#475569;margin-bottom:8px">
+                    How can I help you today?
                 </div>
-                <div style="font-size:0.85rem;max-width:420px;margin:0 auto;line-height:1.6">
-                    Type a question below or pick one from the
-                    <b>Sample Questions</b> panel in the sidebar.
+                <div style="font-size:0.84rem;max-width:400px;margin:0 auto;line-height:1.7;color:#94a3b8">
+                    Ask about leads, SFMC journeys, engagement metrics, or data quality.<br>
+                    Or pick from <b style="color:#64748b">Sample Questions</b> in the sidebar.
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -692,10 +718,10 @@ with tab_chat:
 
     # Footer
     st.markdown("""
-    <div style="text-align:center;margin-top:12px">
-        <span style="font-size:0.73rem;color:#94a3b8">
-            FIPSAR Prospect Journey Intelligence &nbsp;·&nbsp;
-            Data: Snowflake &nbsp;·&nbsp; AI: GPT-4o via LangGraph
+    <div style="text-align:center;margin-top:14px;padding-top:10px;
+                border-top:1px solid #eaeff8">
+        <span style="font-size:0.71rem;color:#b0bdd0;letter-spacing:0.3px">
+            FIPSAR Intelligence &nbsp;·&nbsp; Snowflake &nbsp;·&nbsp; GPT-4o via LangGraph
         </span>
     </div>
     """, unsafe_allow_html=True)

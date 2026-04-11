@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"C:\\\\Users\\\\Akilesh\\\\OneDrive\\\\Desktop\\\\GenAI_Projects\\\\GenAI_venv\\\\Scripts\\\\python.exe\" -c \"import langgraph; print\\(langgraph.__version__\\)\")",
+      "Bash(\"C:\\\\Users\\\\Akilesh\\\\OneDrive\\\\Desktop\\\\GenAI_Projects\\\\GenAI_venv\\\\Scripts\\\\python.exe\" -c \"import inspect; from langgraph.prebuilt import create_react_agent; print\\(inspect.signature\\(create_react_agent\\)\\)\")",
+      "Bash(\"C:\\\\Users\\\\Akilesh\\\\OneDrive\\\\Desktop\\\\GenAI_Projects\\\\GenAI_venv\\\\Scripts\\\\pip.exe\" show:*)",
+      "Bash(start cmd:*)",
+      "Bash(\"C:\\\\Users\\\\Akilesh\\\\OneDrive\\\\Desktop\\\\GenAI_Projects\\\\GenAI_venv\\\\Scripts\\\\pip.exe\" install:*)",
+      "Bash(\"C:\\\\Users\\\\Akilesh\\\\OneDrive\\\\Desktop\\\\GenAI_Projects\\\\GenAI_venv\\\\Scripts\\\\python.exe\" -c \"import fastapi, uvicorn; print\\('fastapi', fastapi.__version__\\); print\\('uvicorn', uvicorn.__version__\\)\")",
+      "Bash('C:\\\\Users\\\\Akilesh\\\\OneDrive\\\\Desktop\\\\GenAI_Projects\\\\GenAI_venv\\\\Scripts\\\\python.exe' -c ':*)",
+      "Bash(where node:*)",
+      "Bash(where npm:*)",
+      "Bash(npm --version)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)"
+    ]
+  }
+}

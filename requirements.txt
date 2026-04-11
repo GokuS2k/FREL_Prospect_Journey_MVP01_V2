@@ -27,6 +27,11 @@ streamlit>=1.37.0
 
 # Charts
 plotly==5.24.1
+
+# FastAPI backend (replaces Streamlit for React UI)
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
 # kaleido is used only for chart→PNG export in email attachments.
 # It is not installable on Linux/Python 3.11 (Render runtime), so it is
 # excluded here. email_sender.py has a built-in graceful fallback when absent.
