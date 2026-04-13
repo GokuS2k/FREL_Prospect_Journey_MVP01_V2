@@ -800,3 +800,416 @@ def intake_trend_chart(
     except Exception as exc:
         logger.error("intake_trend_chart: %s", exc, exc_info=True)
         return f"Could not generate intake trend chart: {exc}"
+
+
+# ===========================================================================
+# 7. Bounce analysis — Hard vs Soft by journey
+# ===========================================================================
+
+def bounce_analysis_chart(
+    start_date: str = "2020-01-01",
+    end_date: str = "2099-12-31",
+) -> str:
+    """Grouped bar: Hard vs Soft bounce counts per journey."""
+    try:
+        sql = f"""
+            SELECT
+                COALESCE(j.JOURNEY_TYPE, 'Unknown') AS journey,
+                COALESCE(UPPER(b.BOUNCE_CATEGORY), 'UNKNOWN') AS bounce_type,
+                COUNT(*) AS cnt
+            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_BOUNCES b
+            LEFT JOIN FIPSAR_DW.GOLD.DIM_SFMC_JOB j ON b.JOB_ID = j.JOB_ID
+            WHERE TRY_TO_DATE(SPLIT(b.EVENT_DATE, ' ')[0]::STRING, 'MM/DD/YYYY')
+                  BETWEEN '{start_date}' AND '{end_date}'
+            GROUP BY 1, 2
+            ORDER BY 1, 2
+        """
+        df = _df(sql, max_rows=100)
+        if df.empty:
+            return "No bounce data found for the selected period."
+
+        bounce_colors = {"HARD": _P["danger"], "SOFT": _P["warning"], "UNKNOWN": _P["neutral"]}
+        pivot = df.pivot_table(index="JOURNEY", columns="BOUNCE_TYPE", values="CNT", fill_value=0)
+
+        fig = go.Figure()
+        for btype in pivot.columns:
+            fig.add_trace(go.Bar(
+                name=f"{btype} Bounce",
+                x=pivot.index.tolist(),
+                y=pivot[btype].tolist(),
+                marker_color=bounce_colors.get(btype, _P["neutral"]),
+                text=[f"{int(v):,}" for v in pivot[btype]],
+                textposition="outside",
+            ))
+
+        fig.update_layout(
+            **_layout(f"Bounce Analysis — Hard vs Soft by Journey  |  {start_date} → {end_date}", height=440),
+            barmode="group",
+        )
+        chart_store.push(fig)
+        total = int(df["CNT"].sum())
+        return f"Bounce analysis chart generated. Total bounces: {total:,} across {df['JOURNEY'].nunique()} journey(s)."
+
+    except Exception as exc:
+        logger.error("bounce_analysis_chart: %s", exc, exc_info=True)
+        return f"Could not generate bounce analysis chart: {exc}"
+
+
+# ===========================================================================
+# 8. Email KPI scorecard — open/click/bounce/unsub rates as horizontal bars
+# ===========================================================================
+
+def email_kpi_scorecard_chart(
+    start_date: str = "2020-01-01",
+    end_date: str = "2099-12-31",
+) -> str:
+    """Horizontal bar KPI scorecard showing open rate, click rate, bounce rate, unsub rate."""
+    try:
+        sql = f"""
+            SELECT
+                SUM(CASE WHEN EVENT_TYPE = 'SENT'        THEN 1 ELSE 0 END) AS sent,
+                SUM(CASE WHEN EVENT_TYPE = 'OPEN'        THEN 1 ELSE 0 END) AS opens,
+                SUM(CASE WHEN EVENT_TYPE = 'CLICK'       THEN 1 ELSE 0 END) AS clicks,
+                SUM(CASE WHEN EVENT_TYPE = 'BOUNCE'      THEN 1 ELSE 0 END) AS bounces,
+                SUM(CASE WHEN EVENT_TYPE = 'UNSUBSCRIBE' THEN 1 ELSE 0 END) AS unsubscribes,
+                SUM(CASE WHEN EVENT_TYPE = 'SPAM'        THEN 1 ELSE 0 END) AS spam
+            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
+            WHERE DATE(EVENT_TIMESTAMP) BETWEEN '{start_date}' AND '{end_date}'
+        """
+        df = _df(sql, max_rows=1)
+        if df.empty or df["SENT"].iloc[0] == 0:
+            return "No SFMC email data found for scorecard."
+
+        row = df.iloc[0]
+        sent = max(int(row["SENT"]), 1)
+        metrics = {
+            "Open Rate":        round(int(row["OPENS"])        / sent * 100, 1),
+            "Click Rate":       round(int(row["CLICKS"])       / sent * 100, 1),
+            "Bounce Rate":      round(int(row["BOUNCES"])      / sent * 100, 1),
+            "Unsubscribe Rate": round(int(row["UNSUBSCRIBES"]) / sent * 100, 1),
+            "Spam Rate":        round(int(row["SPAM"])         / sent * 100, 1),
+        }
+        metric_colors = {
+            "Open Rate":        _P["success"],
+            "Click Rate":       _P["primary"],
+            "Bounce Rate":      _P["danger"],
+            "Unsubscribe Rate": _P["warning"],
+            "Spam Rate":        _P["purple"],
+        }
+
+        labels = list(metrics.keys())
+        values = list(metrics.values())
+        colors = [metric_colors[l] for l in labels]
+
+        fig = go.Figure(go.Bar(
+            y=labels,
+            x=values,
+            orientation="h",
+            marker_color=colors,
+            text=[f"{v:.1f}%" for v in values],
+            textposition="outside",
+            textfont=dict(size=13, color=_P["text"]),
+        ))
+        fig.update_layout(
+            **_layout(f"Email KPI Scorecard  |  {int(row['SENT']):,} emails sent  |  {start_date} → {end_date}", height=380),
+            xaxis=dict(title="Rate (%)", gridcolor=_P["grid"], range=[0, max(values) * 1.35]),
+            yaxis=dict(gridcolor="rgba(0,0,0,0)"),
+            showlegend=False,
+        )
+        chart_store.push(fig)
+        return (
+            f"Email KPI scorecard generated. Sent: {int(row['SENT']):,} | "
+            f"Open Rate: {metrics['Open Rate']}% | Click Rate: {metrics['Click Rate']}% | "
+            f"Bounce Rate: {metrics['Bounce Rate']}% | Unsub Rate: {metrics['Unsubscribe Rate']}%"
+        )
+
+    except Exception as exc:
+        logger.error("email_kpi_scorecard_chart: %s", exc, exc_info=True)
+        return f"Could not generate email KPI scorecard: {exc}"
+
+
+# ===========================================================================
+# 9. Journey stage progression — how many prospects reached each stage
+# ===========================================================================
+
+def journey_stage_progression_chart() -> str:
+    """Horizontal bar showing how many prospects had each of the 9 stages sent (TRUE)."""
+    try:
+        sql = """
+            SELECT
+                'S1 Welcome Email'        AS stage, 1 AS ord,
+                SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_WELCOMEEMAIL_SENT))          = 'TRUE' THEN 1 ELSE 0 END) AS reached
+            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S2 Education Email',       2,
+                SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT))        = 'TRUE' THEN 1 ELSE 0 END)
+            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S3 Nurture Edu 1',         3,
+                SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT))       = 'TRUE' THEN 1 ELSE 0 END)
+            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S4 Nurture Edu 2',         4,
+                SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT))       = 'TRUE' THEN 1 ELSE 0 END)
+            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S5 Prospect Story',        5,
+                SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT))    = 'TRUE' THEN 1 ELSE 0 END)
+            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S6 Conversion Email',      6,
+                SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT))       = 'TRUE' THEN 1 ELSE 0 END)
+            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S7 Reminder Email',        7,
+                SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT))         = 'TRUE' THEN 1 ELSE 0 END)
+            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S8 Re-engagement Email',   8,
+                SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT))      = 'TRUE' THEN 1 ELSE 0 END)
+            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S9 Final Reminder',        9,
+                SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENTFINALREMINDEREMAIL_SENT))      = 'TRUE' THEN 1 ELSE 0 END)
+            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            ORDER BY ord
+        """
+        df = _df(sql, max_rows=9)
+        if df.empty:
+            return "No journey progression data found."
+
+        # Gradient colours from strong to faded as stages progress
+        stage_colors = [_SEQ[i % len(_SEQ)] for i in range(len(df))]
+
+        fig = go.Figure(go.Bar(
+            y=df["STAGE"].tolist(),
+            x=df["REACHED"].tolist(),
+            orientation="h",
+            marker_color=stage_colors,
+            text=[f"{int(v):,}" for v in df["REACHED"]],
+            textposition="outside",
+            textfont=dict(size=12),
+        ))
+        fig.update_layout(
+            **_layout("SFMC Journey Stage Progression — Prospects Reached per Stage", height=480),
+            xaxis=dict(title="Prospects Reached", gridcolor=_P["grid"]),
+            yaxis=dict(autorange="reversed", gridcolor="rgba(0,0,0,0)"),
+            showlegend=False,
+        )
+        chart_store.push(fig)
+        top_stage = df.sort_values("REACHED", ascending=False).iloc[0]
+        return (
+            f"Journey stage progression chart generated. "
+            f"Highest reach: {top_stage['STAGE']} ({int(top_stage['REACHED']):,} prospects). "
+            f"9 stages shown."
+        )
+
+    except Exception as exc:
+        logger.error("journey_stage_progression_chart: %s", exc, exc_info=True)
+        return f"Could not generate journey stage progression chart: {exc}"
+
+
+# ===========================================================================
+# 10. Daily engagement trend — multi-line OPEN / CLICK / SENT over time
+# ===========================================================================
+
+def daily_engagement_trend_chart(
+    start_date: str = "2020-01-01",
+    end_date: str = "2099-12-31",
+    event_types: str = "SENT,OPEN,CLICK",
+) -> str:
+    """Multi-line daily trend of selected SFMC engagement event types."""
+    try:
+        events = [e.strip().upper() for e in event_types.split(",") if e.strip()]
+        placeholders = ", ".join(f"'{e}'" for e in events)
+        sql = f"""
+            SELECT
+                DATE(EVENT_TIMESTAMP)   AS event_date,
+                EVENT_TYPE,
+                COUNT(*)                AS cnt
+            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
+            WHERE DATE(EVENT_TIMESTAMP) BETWEEN '{start_date}' AND '{end_date}'
+              AND EVENT_TYPE IN ({placeholders})
+            GROUP BY 1, 2
+            ORDER BY 1, 2
+        """
+        df = _df(sql, max_rows=5000)
+        if df.empty:
+            return "No daily engagement data found for the selected period and event types."
+
+        fig = go.Figure()
+        for i, etype in enumerate(df["EVENT_TYPE"].unique()):
+            sub = df[df["EVENT_TYPE"] == etype].sort_values("EVENT_DATE")
+            fig.add_trace(go.Scatter(
+                name=etype,
+                x=sub["EVENT_DATE"],
+                y=sub["CNT"],
+                mode="lines+markers",
+                line=dict(color=_EVENT_C.get(etype, _SEQ[i % len(_SEQ)]), width=2),
+                marker=dict(size=5),
+                fill="tozeroy" if etype == "SENT" else None,
+                fillcolor=f"rgba(31,111,235,0.07)" if etype == "SENT" else None,
+            ))
+
+        fig.update_layout(
+            **_layout(f"Daily SFMC Engagement Trend  |  {start_date} → {end_date}", height=450),
+            xaxis=dict(title="Date", gridcolor=_P["grid"]),
+            yaxis=dict(title="Event Count", gridcolor=_P["grid"]),
+            hovermode="x unified",
+        )
+        chart_store.push(fig)
+        total = int(df["CNT"].sum())
+        return (
+            f"Daily engagement trend chart generated. "
+            f"Events: {', '.join(df['EVENT_TYPE'].unique().tolist())} | "
+            f"Total events: {total:,} across {df['EVENT_DATE'].nunique()} day(s)."
+        )
+
+    except Exception as exc:
+        logger.error("daily_engagement_trend_chart: %s", exc, exc_info=True)
+        return f"Could not generate daily engagement trend chart: {exc}"
+
+
+# ===========================================================================
+# 11. Prospect channel mix — donut by lead source channel
+# ===========================================================================
+
+def prospect_channel_mix_chart(
+    start_date: str = "2020-01-01",
+    end_date: str = "2099-12-31",
+) -> str:
+    """Donut chart of prospects by source channel."""
+    try:
+        sql = f"""
+            SELECT
+                COALESCE(c.CHANNEL_NAME, 'Unknown') AS channel,
+                COUNT(DISTINCT fi.PROSPECT_KEY)     AS prospects
+            FROM FIPSAR_DW.GOLD.FACT_PROSPECT_INTAKE fi
+            LEFT JOIN FIPSAR_DW.GOLD.DIM_CHANNEL c ON fi.CHANNEL_KEY = c.CHANNEL_KEY
+            WHERE fi.FILE_DATE BETWEEN '{start_date}' AND '{end_date}'
+            GROUP BY 1
+            ORDER BY 2 DESC
+        """
+        df = _df(sql, max_rows=20)
+        if df.empty:
+            # Fallback: PHI layer
+            sql_phi = f"""
+                SELECT
+                    COALESCE(LEAD_SOURCE, 'Unknown') AS channel,
+                    COUNT(*) AS prospects
+                FROM FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
+                WHERE FILE_DATE BETWEEN '{start_date}' AND '{end_date}'
+                GROUP BY 1
+                ORDER BY 2 DESC
+            """
+            df = _df(sql_phi, max_rows=20)
+            if df.empty:
+                return "No channel data available for the selected period."
+            df.columns = ["CHANNEL", "PROSPECTS"]
+
+        colours = [_SEQ[i % len(_SEQ)] for i in range(len(df))]
+        fig = go.Figure(go.Pie(
+            labels=df["CHANNEL"],
+            values=df["PROSPECTS"],
+            hole=0.48,
+            marker=dict(colors=colours, line=dict(color=_P["bg"], width=2)),
+            textinfo="label+percent+value",
+            textfont=dict(size=12),
+        ))
+        fig.update_layout(
+            **_layout(f"Prospect Channel Mix  |  {start_date} → {end_date}", height=440),
+        )
+        layout_patch = dict(paper_bgcolor=_P["surface"], plot_bgcolor=_P["bg"])
+        fig.update_layout(**layout_patch)
+        chart_store.push(fig)
+        top = df.iloc[0]
+        return (
+            f"Channel mix chart generated. Top channel: {top['CHANNEL']} "
+            f"({int(top['PROSPECTS']):,} prospects). {len(df)} channel(s) shown."
+        )
+
+    except Exception as exc:
+        logger.error("prospect_channel_mix_chart: %s", exc, exc_info=True)
+        return f"Could not generate channel mix chart: {exc}"
+
+
+# ===========================================================================
+# 12. Funnel waterfall — loss at each stage (Lead → Click)
+# ===========================================================================
+
+def funnel_waterfall_chart(
+    start_date: str = "2020-01-01",
+    end_date: str = "2099-12-31",
+) -> str:
+    """Waterfall chart showing absolute volume and drop-off loss at each funnel stage."""
+    try:
+        sql = f"""
+            SELECT 'F01 Lead Intake' AS stage, 1 AS ord, COUNT(*) AS cnt
+            FROM FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE
+            WHERE {_date_between('FILE_DATE', start_date, end_date)}
+            UNION ALL
+            SELECT 'F02 Valid Prospects', 2, COUNT(*)
+            FROM FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
+            WHERE {_date_between('FILE_DATE', start_date, end_date)}
+            UNION ALL
+            SELECT 'F04 SFMC Sent', 3, COUNT(*)
+            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
+            WHERE EVENT_TYPE = 'SENT'
+              AND {_date_between('EVENT_TIMESTAMP', start_date, end_date)}
+            UNION ALL
+            SELECT 'F05 Opened', 4, COUNT(*)
+            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
+            WHERE EVENT_TYPE = 'OPEN'
+              AND {_date_between('EVENT_TIMESTAMP', start_date, end_date)}
+            UNION ALL
+            SELECT 'F06 Clicked', 5, COUNT(*)
+            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
+            WHERE EVENT_TYPE = 'CLICK'
+              AND {_date_between('EVENT_TIMESTAMP', start_date, end_date)}
+            ORDER BY ord
+        """
+        df = _df(sql, max_rows=10)
+        if df.empty:
+            return "No funnel data available for waterfall chart."
+
+        df = df.sort_values("ORD")
+        stages = df["STAGE"].tolist()
+        counts = df["CNT"].astype(int).tolist()
+
+        # Build waterfall: first bar is absolute, rest are relative losses
+        measure = ["absolute"] + ["relative"] * (len(counts) - 1)
+        y_vals = [counts[0]] + [counts[i] - counts[i - 1] for i in range(1, len(counts))]
+        text_vals = [
+            f"{counts[i]:,}" if i == 0
+            else f"{counts[i]:,}  ({counts[i]-counts[i-1]:+,})"
+            for i in range(len(counts))
+        ]
+
+        fig = go.Figure(go.Waterfall(
+            orientation="v",
+            measure=measure,
+            x=stages,
+            y=y_vals,
+            text=text_vals,
+            textposition="outside",
+            connector=dict(line=dict(color=_P["grid"], width=1, dash="dot")),
+            increasing=dict(marker=dict(color=_P["success"])),
+            decreasing=dict(marker=dict(color=_P["danger"])),
+            totals=dict(marker=dict(color=_P["primary"])),
+        ))
+        fig.update_layout(
+            **_layout(f"Funnel Loss Waterfall  |  {start_date} → {end_date}", height=460),
+            showlegend=False,
+        )
+        chart_store.push(fig)
+        drop = counts[0] - counts[-1]
+        drop_pct = round(drop / max(counts[0], 1) * 100, 1)
+        return (
+            f"Funnel waterfall chart generated. "
+            f"Lead Intake: {counts[0]:,} → Final Clicked: {counts[-1]:,} "
+            f"(total funnel loss: {drop:,} = {drop_pct}% drop-off)."
+        )
+
+    except Exception as exc:
+        logger.error("funnel_waterfall_chart: %s", exc, exc_info=True)
+        return f"Could not generate funnel waterfall chart: {exc}"

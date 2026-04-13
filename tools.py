@@ -4,23 +4,35 @@ tools.py
 LangChain tools that the conversational agent can call to retrieve
 live data from Snowflake.  Every tool is read-only.
 
-Tools exposed:
-  1. run_sql               — Execute any agent-generated SELECT statement.
-  2. get_funnel_metrics    — Full F01-F07 funnel counts for a date range.
-  3. get_rejection_analysis— Who was rejected, why, and when.
-  4. get_sfmc_engagement_stats — Sent/Open/Click/Bounce summary per journey/stage.
-  5. get_drop_analysis     — Diagnose volume drop on a specific date.
-  6. trace_prospect        — Trace a prospect end-to-end by email or ID.
-  7. get_ai_intelligence            — Schema-safe AI table discovery + sample data.
-  8. get_prospect_conversion_analysis — Engagement-derived conversion & drop-off scores.
-  9. get_pipeline_observability     — Pipeline run health and DQ signal counts.
+DATA TOOLS (13):
+  1.  run_sql                       — Execute any agent-generated SELECT statement.
+  2.  get_funnel_metrics            — Full F01-F07 funnel counts for a date range.
+  3.  get_rejection_analysis        — Who was rejected, why, and when.
+  4.  get_sfmc_engagement_stats     — Sent/Open/Click/Bounce summary per journey/stage.
+  5.  get_drop_analysis             — Diagnose volume drop on a specific date.
+  6.  trace_prospect                — Trace a prospect end-to-end by email or ID.
+  7.  get_ai_intelligence           — Schema-safe AI table discovery + sample data.
+  8.  get_prospect_conversion_analysis — Engagement-derived conversion & drop-off scores.
+  9.  get_pipeline_observability    — Pipeline run health and DQ signal counts.
   10. get_rejected_lead_details     — Row-level rejected lead records with parsed fields.
   11. get_prospect_details          — Row-level valid mastered prospect records.
-  12. chart_funnel                  — Funnel bar chart (Lead → Prospect → Sent → Opened → Clicked).
-  13. chart_rejections              — Rejection reasons donut chart.
-  14. chart_engagement              — SFMC engagement grouped bar chart by journey.
-  15. chart_conversion_segments     — Conversion segment + active/inactive donut chart.
-  16. chart_intake_trend            — Lead & prospect intake volume over time.
+  12. get_sfmc_stage_suppression    — Per-stage suppression analysis (Stages 1-9).
+  13. get_sfmc_prospect_outbound_match — DIM_PROSPECT vs RAW_SFMC_PROSPECT_C reconciliation.
+
+CHART TOOLS (13):
+  14. chart_smart                   — Universal chart engine (SQL + chart type = any visual).
+  15. chart_funnel                  — Funnel bar: Lead → Prospect → Sent → Opened → Clicked.
+  16. chart_funnel_waterfall        — Waterfall showing drop-off loss at each funnel stage.
+  17. chart_rejections              — Rejection reasons donut chart.
+  18. chart_engagement              — SFMC engagement grouped bar by journey & event type.
+  19. chart_email_kpi_scorecard     — KPI rates: open/click/bounce/unsub % (horizontal bars).
+  20. chart_bounce_analysis         — Hard vs Soft bounce breakdown by journey (grouped bar).
+  21. chart_daily_engagement_trend  — Day-by-day SENT/OPEN/CLICK multi-line time series.
+  22. chart_journey_stage_progression — Prospects reaching each of the 9 journey stages.
+  23. chart_sfmc_stage_fishbone     — Expected vs Sent vs Suppressed per stage on a date.
+  24. chart_conversion_segments     — Engagement segment donut + Active vs Inactive donut.
+  25. chart_prospect_channel_mix    — Prospect distribution by lead source channel (donut).
+  26. chart_intake_trend            — Lead & prospect volume over time (line/area).
 """
 
 from __future__ import annotations
@@ -1947,6 +1959,134 @@ def chart_sfmc_stage_fishbone(
 
 
 # ---------------------------------------------------------------------------
+# Chart Tools 13–18: Six additional purpose-built visual tools
+# ---------------------------------------------------------------------------
+
+@tool
+def chart_bounce_analysis(
+    start_date: str = "2020-01-01",
+    end_date: str = "2099-12-31",
+) -> str:
+    """
+    Generate a grouped bar chart breaking down Hard vs Soft bounces per SFMC journey.
+
+    Use this when the user asks:
+    - "Show me bounce breakdown" / "hard vs soft bounces"
+    - "Which journey has the most bounces?"
+    - "Bounce analysis chart"
+
+    Args:
+        start_date: Start of date range (YYYY-MM-DD).
+        end_date:   End of date range (YYYY-MM-DD).
+    """
+    return _charts.bounce_analysis_chart(start_date, end_date)
+
+
+@tool
+def chart_email_kpi_scorecard(
+    start_date: str = "2020-01-01",
+    end_date: str = "2099-12-31",
+) -> str:
+    """
+    Generate a horizontal bar KPI scorecard showing open rate, click rate,
+    bounce rate, unsubscribe rate, and spam rate as percentages.
+
+    Use this when the user asks:
+    - "Show me email performance metrics" / "email KPIs"
+    - "What are our open rates, click rates, bounce rates?"
+    - "Email health scorecard" / "KPI overview chart"
+
+    Args:
+        start_date: Start of date range (YYYY-MM-DD).
+        end_date:   End of date range (YYYY-MM-DD).
+    """
+    return _charts.email_kpi_scorecard_chart(start_date, end_date)
+
+
+@tool
+def chart_journey_stage_progression() -> str:
+    """
+    Generate a horizontal bar chart showing how many prospects reached (had sent = TRUE)
+    each of the 9 SFMC journey stages. Reveals exactly where prospects drop off across
+    Stage 1 (Welcome) through Stage 9 (Final Reminder).
+
+    Use this when the user asks:
+    - "How many prospects reached each stage?"
+    - "Journey progression chart" / "Stage completion chart"
+    - "Which stage has the biggest drop-off?"
+    - "Show stage-by-stage reach"
+    """
+    return _charts.journey_stage_progression_chart()
+
+
+@tool
+def chart_daily_engagement_trend(
+    start_date: str = "2020-01-01",
+    end_date: str = "2099-12-31",
+    event_types: str = "SENT,OPEN,CLICK",
+) -> str:
+    """
+    Generate a multi-line time-series chart of daily SFMC engagement events over time.
+    Shows SENT, OPEN, CLICK (and any others specified) as separate coloured lines.
+
+    Use this when the user asks:
+    - "Show daily email engagement trend"
+    - "How have opens/clicks changed over time?"
+    - "Plot SFMC events over the last 30 days"
+    - "Daily trend chart"
+
+    Args:
+        start_date:   Start of date range (YYYY-MM-DD).
+        end_date:     End of date range (YYYY-MM-DD).
+        event_types:  Comma-separated event types to plot (e.g. "SENT,OPEN,CLICK,BOUNCE").
+    """
+    return _charts.daily_engagement_trend_chart(start_date, end_date, event_types)
+
+
+@tool
+def chart_prospect_channel_mix(
+    start_date: str = "2020-01-01",
+    end_date: str = "2099-12-31",
+) -> str:
+    """
+    Generate a donut chart showing the distribution of prospects by lead source channel.
+
+    Use this when the user asks:
+    - "Where do our leads come from?"
+    - "Channel mix chart" / "Source distribution"
+    - "Which channel drives the most prospects?"
+    - "Lead source breakdown chart"
+
+    Args:
+        start_date: Start of date range (YYYY-MM-DD).
+        end_date:   End of date range (YYYY-MM-DD).
+    """
+    return _charts.prospect_channel_mix_chart(start_date, end_date)
+
+
+@tool
+def chart_funnel_waterfall(
+    start_date: str = "2020-01-01",
+    end_date: str = "2099-12-31",
+) -> str:
+    """
+    Generate a waterfall chart showing absolute volume and loss at each funnel stage:
+    Lead Intake → Valid Prospects → SFMC Sent → Opened → Clicked.
+    Each bar shows the drop-off (negative delta) from the previous stage.
+
+    Use this when the user asks:
+    - "Show me funnel drop-off" / "where are we losing prospects?"
+    - "Funnel waterfall" / "funnel loss chart"
+    - "How much drops between each stage?"
+
+    Args:
+        start_date: Start of date range (YYYY-MM-DD).
+        end_date:   End of date range (YYYY-MM-DD).
+    """
+    return _charts.funnel_waterfall_chart(start_date, end_date)
+
+
+# ---------------------------------------------------------------------------
 # Tool registry
 # ---------------------------------------------------------------------------
 
@@ -1964,6 +2104,7 @@ ALL_TOOLS = [
     get_prospect_details,
     get_sfmc_stage_suppression,
     get_sfmc_prospect_outbound_match,
+    # Chart tools — purpose-built
     chart_smart,
     chart_funnel,
     chart_rejections,
@@ -1971,6 +2112,13 @@ ALL_TOOLS = [
     chart_conversion_segments,
     chart_intake_trend,
     chart_sfmc_stage_fishbone,
+    # Chart tools — new (v2)
+    chart_bounce_analysis,
+    chart_email_kpi_scorecard,
+    chart_journey_stage_progression,
+    chart_daily_engagement_trend,
+    chart_prospect_channel_mix,
+    chart_funnel_waterfall,
 ]
 
 

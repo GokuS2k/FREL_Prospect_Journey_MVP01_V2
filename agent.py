@@ -40,8 +40,8 @@ logger = logging.getLogger(__name__)
 _llm = ChatOpenAI(
     model=app_config.openai_model,
     api_key=app_config.openai_api_key,
-    temperature=0,          # Deterministic SQL / analysis outputs
-    max_tokens=4096,
+    temperature=0.1,        # Slight warmth allows more natural phrasing without sacrificing accuracy
+    max_tokens=8192,        # Increased for richer, more detailed responses
     streaming=False,
 )
 
@@ -69,7 +69,11 @@ def _state_modifier(state: dict) -> list[BaseMessage]:
         f"CURRENT YEAR: {today.year}\n"
         "IMPORTANT: When the user says 'today', 'this month', 'current month', "
         "'this week', or 'recent' — always use the date above. "
-        "NEVER use your training-data cutoff date as 'today'.\n"
+        "NEVER use your training-data cutoff date as 'today'.\n\n"
+        "RESPONSE STYLE REMINDER: Be adaptive — match the format and depth to the question. "
+        "Lead with insights, not raw data. Use contextual callouts when metrics are notable. "
+        "Always auto-generate at least one chart for quantitative answers. "
+        "End every response with the TL;DR + Key Insights + Dig Deeper footer.\n"
     )
     full_prompt = date_header + "\n" + SYSTEM_PROMPT
     messages = state.get("messages", [])

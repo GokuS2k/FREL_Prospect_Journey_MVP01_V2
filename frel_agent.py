@@ -105,8 +105,8 @@ FREL_SYSTEM_PROMPT: str = SYSTEM_PROMPT + _EMAIL_INSTRUCTIONS
 _frel_llm = ChatOpenAI(
     model=app_config.openai_model,
     api_key=app_config.openai_api_key,
-    temperature=0,
-    max_tokens=4096,
+    temperature=0.1,
+    max_tokens=8192,
     streaming=False,
 )
 
