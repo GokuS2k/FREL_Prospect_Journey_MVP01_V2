@@ -116,6 +116,7 @@ def _fetch_funnel_kpis(s: date, e: date, channel: str) -> dict[str, int]:
         SELECT COUNT(*)
         FROM FIPSAR_DW.SILVER.SLV_PROSPECT_MASTER
         WHERE {_date_flt('FILE_DATE', s, e)}
+          AND DQ_PASSED = TRUE
     """))
     sfmc_load = _scalar(_run(f"""
         SELECT COUNT(*)
@@ -131,7 +132,8 @@ def _fetch_funnel_kpis(s: date, e: date, channel: str) -> dict[str, int]:
         FROM FIPSAR_AUDIT.PIPELINE_AUDIT.DQ_REJECTION_LOG
         WHERE UPPER(REJECTION_REASON) IN (
             'NULL_EMAIL','NULL_FIRST_NAME','NULL_LAST_NAME',
-            'NULL_PHONE_NUMBER','INVALID_FILE_DATE','NO_CONSENT'
+            'NULL_PHONE_NUMBER','INVALID_FILE_DATE','NO_CONSENT',
+            'TEST_EMAIL_DOMAIN'
         )
         AND (
             TRY_TO_DATE(TRY_PARSE_JSON(REJECTED_RECORD):FILE_DATE::STRING)
