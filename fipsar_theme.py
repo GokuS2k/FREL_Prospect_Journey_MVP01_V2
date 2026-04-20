@@ -201,6 +201,19 @@ html, body, [class*="css"] {{
 [data-baseweb="tab-highlight"] {{ background: transparent !important; height: 0 !important; }}
 [data-baseweb="tab-border"]    {{ display: none !important; }}
 
+/* Wide tables inside chat messages — horizontal scroll so columns never overflow */
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] {{
+    overflow-x: auto !important;
+}}
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] table {{
+    min-width: max-content !important;
+    white-space: nowrap !important;
+}}
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] table td,
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] table th {{
+    white-space: nowrap !important;
+}}
+
 /* Chat — user: light surface; assistant: brand gradient + white text */
 [data-testid="stChatMessage"] {{
     border-radius: 16px !important;
@@ -261,18 +274,27 @@ html, body, [class*="css"] {{
     border-color: rgba(255,255,255,0.25) !important;
 }}
 
-/* Fix for invisible text on buttons and captions inside assistant messages */
-[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) .stButton > button p,
-[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) .stButton > button p,
+/* Fix for invisible text on follow-up buttons inside assistant messages.
+   Covers Streamlit's variable p/span wrapping across versions. */
 [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) .stButton > button,
-[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) .stButton > button {{
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) .stButton > button p,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) .stButton > button span,
+[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) .stButton > button,
+[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) .stButton > button p,
+[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) .stButton > button span {{
     color: {NAVY} !important;
     background: rgba(255,255,255,0.92) !important;
+    background-color: rgba(255,255,255,0.92) !important;
     border: 1px solid rgba(0,51,160,0.25) !important;
 }}
 [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) .stButton > button:hover,
-[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) .stButton > button:hover {{
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) .stButton > button:hover p,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) .stButton > button:hover span,
+[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) .stButton > button:hover,
+[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) .stButton > button:hover p,
+[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) .stButton > button:hover span {{
     background: #ffffff !important;
+    background-color: #ffffff !important;
     border-color: {NAVY} !important;
     color: {NAVY} !important;
 }}

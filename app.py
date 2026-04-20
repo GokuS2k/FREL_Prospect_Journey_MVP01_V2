@@ -15,6 +15,7 @@ Run with:
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 import logging
@@ -31,7 +32,7 @@ st.set_page_config(
 )
 
 from snowflake_connector import test_connection
-from agent import chat, reset_session
+from agent import chat, reset_session, set_persona
 from frel_agent import frel_chat, reset_frel_session
 import chart_store
 from voice_assistant import transcribe_audio, text_to_speech
@@ -39,7 +40,7 @@ from config import email_config
 from email_sender import test_email_connection, send_email
 from analytics_dashboard import render_analytics_dashboard
 from fipsar_theme import CYAN, GRADIENT, NAVY, PAGE_BG, TEXT_PRIMARY, TEXT_SECONDARY, streamlit_global_css
-from semantic_model import sidebar_data_dictionary_md
+from semantic_model import sidebar_data_dictionary_md, PERSONAS
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -53,6 +54,138 @@ st.markdown(streamlit_global_css(), unsafe_allow_html=True)
 # ===========================================================================
 # Shared UI helpers  (defined before tabs so every tab can call them)
 # ===========================================================================
+
+def _inject_chat_persona_selector(current_persona: str) -> None:
+    """
+    Inject a compact persona <select> into the left side of the Streamlit chat input bar.
+    When the user changes it, the function programmatically clicks the matching option in
+    the sidebar baseweb Select so Streamlit state is updated and a rerun is triggered.
+    """
+    _personas_js = json.dumps(PERSONAS)
+    _icons_js = json.dumps({
+        "General": "🌐",
+        "Executive Committee": "👔",
+        "Business Users": "📊",
+        "Administrators Group": "🔧",
+    })
+    _short_js = json.dumps({
+        "General": "General",
+        "Executive Committee": "Executive",
+        "Business Users": "Business",
+        "Administrators Group": "Admins",
+    })
+    _current_js = json.dumps(current_persona)
+
+    components.html(f"""
+<script>
+(function() {{
+  var PERSONAS = {_personas_js};
+  var ICONS    = {_icons_js};
+  var SHORT    = {_short_js};
+  var current  = {_current_js};
+
+  function inject() {{
+    try {{
+      var doc = window.parent.document;
+      var container = doc.querySelector('[data-testid="stChatInputContainer"]');
+      if (!container) return false;
+
+      var existing = doc.getElementById('fipsar-psel-wrap');
+      if (existing) {{
+        var sel = doc.getElementById('fipsar-psel');
+        if (sel && sel.value !== current) sel.value = current;
+        return true;
+      }}
+
+      // Push the textarea right to make room
+      var ta = container.querySelector('textarea');
+      if (ta) ta.style.paddingLeft = '155px';
+
+      // Wrapper sits inside the input container on the left
+      var wrap = doc.createElement('div');
+      wrap.id = 'fipsar-psel-wrap';
+      wrap.style.cssText = [
+        'position:absolute', 'left:10px', 'top:50%',
+        'transform:translateY(-50%)', 'z-index:9999'
+      ].join(';');
+
+      var sel = doc.createElement('select');
+      sel.id = 'fipsar-psel';
+      sel.title = 'AI Persona';
+      sel.style.cssText = [
+        'background:#f0f4ff',
+        'border:1.5px solid #c7d2fe',
+        'border-radius:8px',
+        'padding:5px 8px',
+        'font-size:0.71rem',
+        'font-family:Inter,system-ui,sans-serif',
+        'color:#0033A0',
+        'font-weight:700',
+        'cursor:pointer',
+        'outline:none',
+        'width:148px',
+        'box-shadow:0 1px 4px rgba(0,51,160,0.12)',
+        'appearance:auto'
+      ].join(';');
+
+      PERSONAS.forEach(function(p) {{
+        var o = doc.createElement('option');
+        o.value = p;
+        o.text  = ICONS[p] + ' ' + SHORT[p];
+        if (p === current) o.selected = true;
+        sel.appendChild(o);
+      }});
+
+      sel.addEventListener('change', function(e) {{
+        clickSidebarPersona(doc, e.target.value);
+      }});
+
+      wrap.appendChild(sel);
+      container.style.position = 'relative';
+      container.appendChild(wrap);
+      return true;
+    }} catch(err) {{ return false; }}
+  }}
+
+  // Click the matching option inside the sidebar persona selectbox
+  function clickSidebarPersona(doc, persona) {{
+    var sidebar = doc.querySelector('[data-testid="stSidebar"]');
+    if (!sidebar) return;
+    var boxes = sidebar.querySelectorAll('[data-testid="stSelectbox"]');
+    for (var i = 0; i < boxes.length; i++) {{
+      var trigger = boxes[i].querySelector('[data-baseweb="select"] > div:first-child');
+      if (!trigger) continue;
+      trigger.click();
+      (function(box) {{
+        setTimeout(function() {{
+          // baseweb renders the listbox in a portal at body level
+          var opts = doc.querySelectorAll('[data-baseweb="menu"] [role="option"]');
+          for (var j = 0; j < opts.length; j++) {{
+            if (opts[j].textContent.trim() === persona) {{ opts[j].click(); break; }}
+          }}
+        }}, 120);
+      }})(boxes[i]);
+      break;
+    }}
+  }}
+
+  // Retry until the chat input renders
+  var attempts = 0;
+  var timer = setInterval(function() {{
+    if (inject() || attempts++ > 100) clearInterval(timer);
+  }}, 250);
+
+  // Re-inject after every Streamlit re-render (chat input re-mounts)
+  try {{
+    var obs = new MutationObserver(function() {{
+      if (!window.parent.document.getElementById('fipsar-psel-wrap')) inject();
+    }});
+    obs.observe(window.parent.document.body, {{childList:true, subtree:true}});
+  }} catch(e) {{}}
+}})();
+</script>
+""", height=0)
+
 
 def _render_email_badge(meta: dict) -> None:
     """Render the green 'EMAIL SENT' confirmation card."""
@@ -143,6 +276,8 @@ if "chat_followup_pending" not in st.session_state:
     st.session_state.chat_followup_pending = None
 if "snowflake_ok" not in st.session_state:
     st.session_state.snowflake_ok = None
+if "persona" not in st.session_state:
+    st.session_state.persona = "General"
 
 # Voice
 if "voice_session_id" not in st.session_state:
@@ -181,6 +316,39 @@ with st.sidebar:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    st.divider()
+
+    # ── Persona selector ──────────────────────────────────────────────────
+    _PERSONA_META = {
+        "General":               ("🌐", "Broad-purpose · everyday questions"),
+        "Executive Committee":   ("👔", "Concise · outcomes · strategic view"),
+        "Business Users":        ("📊", "Actionable · campaign & funnel focus"),
+        "Administrators Group":  ("🔧", "Detailed diagnostics · SQL included"),
+    }
+    st.markdown(f"""<div style="font-size:0.72rem;font-weight:700;color:{NAVY};
+        text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px">
+        🎭 AI Persona</div>""", unsafe_allow_html=True)
+
+    _sel_persona = st.selectbox(
+        "Select persona",
+        options=PERSONAS,
+        index=PERSONAS.index(st.session_state.persona),
+        label_visibility="collapsed",
+        key="persona_selector",
+    )
+    if _sel_persona != st.session_state.persona:
+        st.session_state.persona = _sel_persona
+
+    _icon, _desc = _PERSONA_META[st.session_state.persona]
+    st.markdown(
+        f"""<div style="background:#f0f4ff;border:1px solid #c7d2fe;border-radius:8px;
+        padding:7px 12px;font-size:0.76rem;color:{NAVY};margin-top:4px;line-height:1.6">
+        {_icon}&nbsp; <b>{st.session_state.persona}</b><br>
+        <span style="color:#64748b;font-size:0.71rem">{_desc}</span>
+        </div>""",
+        unsafe_allow_html=True,
+    )
 
     st.divider()
 
@@ -361,6 +529,7 @@ with st.sidebar:
                 if st.button(q, key=f"sample_{q[:30]}", use_container_width=True):
                     st.session_state.messages.append({"role": "user", "content": q})
                     with st.spinner("Thinking..."):
+                        set_persona(st.session_state.persona)
                         chart_store.set_session(st.session_state.session_id)
                         response = chat(st.session_state.session_id, q)
                     pending_charts = chart_store.pop_all(st.session_state.session_id)
@@ -403,6 +572,7 @@ with tab_chat:
         st.session_state.chat_followup_pending = None
         st.session_state.messages.append({"role": "user", "content": _fq})
         with st.spinner("Querying Snowflake and reasoning…"):
+            set_persona(st.session_state.persona)
             chart_store.set_session(st.session_state.session_id)
             _resp = chat(st.session_state.session_id, _fq)
         _charts = chart_store.pop_all(st.session_state.session_id)
@@ -431,7 +601,10 @@ with tab_chat:
             </div>
         </div>
         <div style="font-size:0.68rem;color:{TEXT_SECONDARY};font-weight:600;text-align:right;letter-spacing:0.4px;text-transform:uppercase">
-            GPT-4o · LangGraph<br><span style="color:{NAVY}">Snowflake</span>
+            GPT-4o · LangGraph<br><span style="color:{NAVY}">Snowflake</span><br>
+            <span style="background:#e0e7ff;color:{NAVY};border-radius:5px;padding:2px 8px;font-size:0.65rem;font-weight:700;letter-spacing:0.3px">
+                {st.session_state.persona}
+            </span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -457,26 +630,34 @@ with tab_chat:
             """, unsafe_allow_html=True)
         else:
             for _mi, msg in enumerate(st.session_state.messages):
+                _fus: list[str] = []
+                _msg_charts: list = []
                 with st.chat_message(msg["role"]):
                     if msg["role"] == "assistant":
                         _body, _fus = _split_followups_from_assistant(msg["content"])
                         st.markdown(_body)
-                        for _ci, fig in enumerate(msg.get("charts", [])):
-                            st.plotly_chart(fig, use_container_width=True, key=f"chart_hist_{_mi}_{_ci}")
-                        if _fus:
-                            st.caption("Next questions")
-                            for _fj, _q in enumerate(_fus):
-                                _lbl = _q if len(_q) <= 80 else _q[:77] + "…"
-                                if st.button(
-                                    _lbl,
-                                    key=f"chat_fu_{_mi}_{_fj}",
-                                    help=_q,
-                                    use_container_width=True,
-                                ):
-                                    st.session_state.chat_followup_pending = _q
-                                    st.rerun()
+                        _msg_charts = msg.get("charts", [])
                     else:
                         st.markdown(msg["content"])
+                # Charts and follow-up buttons rendered OUTSIDE the gradient bubble
+                # so they are never clipped or tinted by the gradient CSS
+                for _ci, fig in enumerate(_msg_charts):
+                    st.plotly_chart(fig, use_container_width=True, key=f"chart_hist_{_mi}_{_ci}")
+                if _fus:
+                    st.caption("Next questions")
+                    for _fj, _q in enumerate(_fus):
+                        _lbl = _q if len(_q) <= 80 else _q[:77] + "…"
+                        if st.button(
+                            _lbl,
+                            key=f"chat_fu_{_mi}_{_fj}",
+                            help=_q,
+                            use_container_width=True,
+                        ):
+                            st.session_state.chat_followup_pending = _q
+                            st.rerun()
+
+    # Inject persona selector into the left side of the chat input bar
+    _inject_chat_persona_selector(st.session_state.persona)
 
     # Sticky chat input
     if user_input := st.chat_input("Ask about your prospect journey data…", key="chat_input"):
@@ -486,25 +667,27 @@ with tab_chat:
                 st.markdown(user_input)
             with st.chat_message("assistant"):
                 with st.spinner("Querying Snowflake and reasoning…"):
+                    set_persona(st.session_state.persona)
                     chart_store.set_session(st.session_state.session_id)
                     response = chat(st.session_state.session_id, user_input)
                 pending_charts = chart_store.pop_all(st.session_state.session_id)
                 _b_live, _fu_live = _split_followups_from_assistant(response)
                 st.markdown(_b_live)
-                for _ci, fig in enumerate(pending_charts):
-                    st.plotly_chart(fig, use_container_width=True, key=f"chart_live_{_ci}")
-                if _fu_live:
-                    st.caption("Next questions")
-                    for _fj, _q in enumerate(_fu_live):
-                        _lbl = _q if len(_q) <= 80 else _q[:77] + "…"
-                        if st.button(
-                            _lbl,
-                            key=f"chat_fu_live_{_fj}",
-                            help=_q,
-                            use_container_width=True,
-                        ):
-                            st.session_state.chat_followup_pending = _q
-                            st.rerun()
+            # Charts rendered OUTSIDE the gradient bubble — avoids CSS tinting/clipping
+            for _ci, fig in enumerate(pending_charts):
+                st.plotly_chart(fig, use_container_width=True, key=f"chart_live_{_ci}")
+            if _fu_live:
+                st.caption("Next questions")
+                for _fj, _q in enumerate(_fu_live):
+                    _lbl = _q if len(_q) <= 80 else _q[:77] + "…"
+                    if st.button(
+                        _lbl,
+                        key=f"chat_fu_live_{_fj}",
+                        help=_q,
+                        use_container_width=True,
+                    ):
+                        st.session_state.chat_followup_pending = _q
+                        st.rerun()
 
         st.session_state.messages.append({
             "role": "assistant",

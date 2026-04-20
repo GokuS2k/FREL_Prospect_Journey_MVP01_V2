@@ -496,17 +496,15 @@ def conversion_segment_chart(
     try:
         sql_seg = f"""
             WITH pe AS (
-                SELECT x.MASTER_PATIENT_ID,
+                SELECT p.MASTER_PATIENT_ID,
                     COUNT(CASE WHEN fe.EVENT_TYPE='CLICK'       THEN 1 END) AS clicks,
                     COUNT(CASE WHEN fe.EVENT_TYPE='OPEN'        THEN 1 END) AS opens,
                     COUNT(CASE WHEN fe.EVENT_TYPE='BOUNCE'      THEN 1 END) AS bounces,
                     COUNT(CASE WHEN fe.EVENT_TYPE='UNSUBSCRIBE' THEN 1 END) AS unsubscribes,
                     COUNT(CASE WHEN fe.EVENT_TYPE='SENT'        THEN 1 END) AS sends
                 FROM QA_FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER p
-                JOIN QA_FIPSAR_PHI_HUB.PHI_CORE.PATIENT_IDENTITY_XREF x
-                     ON p.MASTER_PATIENT_ID = x.MASTER_PATIENT_ID
                 JOIN QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
-                     ON x.IDENTITY_KEY = fe.SUBSCRIBER_KEY
+                     ON p.MASTER_PATIENT_ID = fe.SUBSCRIBER_KEY
                 WHERE {_date_between('fe.EVENT_TIMESTAMP', start_date, end_date)}
                   AND p.IS_ACTIVE = TRUE
                 GROUP BY 1
@@ -534,12 +532,15 @@ def conversion_segment_chart(
             return "No conversion/segment data available."
 
         has_seg = not df_seg.empty
+        # When engagement segment data exists, show only the segments donut —
+        # the active/dropped donut adds nothing (it always shows ~100% Active
+        # because the segments query already filters IS_ACTIVE = TRUE).
+        show_act = not has_seg and not df_act.empty
+
         fig = make_subplots(
-            rows=1, cols=2 if has_seg else 1,
-            specs=[[{"type": "pie"}, {"type": "pie"}]] if has_seg
-                  else [[{"type": "pie"}]],
-            subplot_titles=(["Engagement Segments", "Active vs Dropped"] if has_seg
-                            else ["Active vs Dropped"]),
+            rows=1, cols=1,
+            specs=[[{"type": "pie"}]],
+            subplot_titles=(["Engagement Segments"] if has_seg else ["Active vs Dropped"]),
         )
 
         seg_label_map = {
@@ -559,14 +560,14 @@ def conversion_segment_chart(
                 textinfo="percent+value", name="Segments",
             ), row=1, col=1)
 
-        if not df_act.empty:
+        if show_act:
             act_c = [_P["success"] if s == "Active" else _P["danger"]
                      for s in df_act["STATUS"]]
             fig.add_trace(go.Pie(
                 labels=df_act["STATUS"], values=df_act["CNT"], hole=0.45,
                 marker=dict(colors=act_c, line=dict(color="#ffffff", width=2)),
                 textinfo="percent+value", name="Active/Dropped",
-            ), row=1, col=2 if has_seg else 1)
+            ), row=1, col=1)
 
         layout = _layout(
             f"Conversion & Drop-off Overview  |  {start_date} → {end_date}", height=460
@@ -1001,35 +1002,122 @@ def journey_stage_progression_chart() -> str:
         if df.empty:
             return "No journey progression data found."
 
-        # Gradient colours from strong to faded as stages progress
-        stage_colors = [_SEQ[i % len(_SEQ)] for i in range(len(df))]
-
-        fig = go.Figure(go.Bar(
-            y=df["STAGE"].tolist(),
-            x=df["REACHED"].tolist(),
-            orientation="h",
-            marker_color=stage_colors,
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df["STAGE"].tolist(),
+            y=df["REACHED"].tolist(),
+            mode="lines+markers+text",
+            line=dict(color=_P["primary"], width=3),
+            marker=dict(size=10, color=_P["primary"], line=dict(color="#ffffff", width=2)),
             text=[f"{int(v):,}" for v in df["REACHED"]],
-            textposition="outside",
-            textfont=dict(size=12),
+            textposition="top center",
+            textfont=dict(size=11),
+            name="Prospects Reached",
         ))
         fig.update_layout(
-            **_layout("SFMC Journey Stage Progression — Prospects Reached per Stage", height=480),
-            xaxis=dict(title="Prospects Reached", gridcolor=_P["grid"]),
-            yaxis=dict(autorange="reversed", gridcolor="rgba(0,0,0,0)"),
+            **_layout("SFMC Journey Stage Progression — Prospects Reached per Stage", height=460),
+            xaxis=dict(title="Journey Stage", gridcolor=_P["grid"], tickangle=-30),
+            yaxis=dict(title="Prospects Reached", gridcolor=_P["grid"]),
             showlegend=False,
         )
         chart_store.push(fig)
         top_stage = df.sort_values("REACHED", ascending=False).iloc[0]
         return (
-            f"Journey stage progression chart generated. "
+            f"Journey stage progression line chart generated. "
             f"Highest reach: {top_stage['STAGE']} ({int(top_stage['REACHED']):,} prospects). "
-            f"9 stages shown."
+            f"9 stages shown, trend is descending."
         )
 
     except Exception as exc:
         logger.error("journey_stage_progression_chart: %s", exc, exc_info=True)
         return f"Could not generate journey stage progression chart: {exc}"
+
+
+# ===========================================================================
+# 9b. Stage suppression line chart — per-stage dropout counts
+# ===========================================================================
+
+def stage_suppression_line_chart() -> str:
+    """Line chart showing how many prospects dropped out (were suppressed) at each stage."""
+    try:
+        sql = """
+            SELECT 'S1 Welcome Email' AS stage_label, 1 AS ord,
+                SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_WELCOMEEMAIL_SENT)) != 'TRUE' THEN 1 ELSE 0 END) AS suppressed_at_stage
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S2 Education Email', 2,
+                SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_WELCOMEEMAIL_SENT))   = 'TRUE'
+                          AND UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT)) != 'TRUE' THEN 1 ELSE 0 END)
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S3 Nurture Edu 1', 3,
+                SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT))    = 'TRUE'
+                          AND UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT)) != 'TRUE' THEN 1 ELSE 0 END)
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S4 Nurture Edu 2', 4,
+                SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT))  = 'TRUE'
+                          AND UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT)) != 'TRUE' THEN 1 ELSE 0 END)
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S5 Prospect Story', 5,
+                SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT))      = 'TRUE'
+                          AND UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT)) != 'TRUE' THEN 1 ELSE 0 END)
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S6 Conversion Email', 6,
+                SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT)) = 'TRUE'
+                          AND UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT))  != 'TRUE' THEN 1 ELSE 0 END)
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S7 Reminder Email', 7,
+                SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT)) = 'TRUE'
+                          AND UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT))  != 'TRUE' THEN 1 ELSE 0 END)
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S8 Re-engagement', 8,
+                SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT))      = 'TRUE'
+                          AND UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT)) != 'TRUE' THEN 1 ELSE 0 END)
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            UNION ALL
+            SELECT 'S9 Final Reminder', 9,
+                SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT))   = 'TRUE'
+                          AND UPPER(TRIM(LOWENGAGEMENTFINALREMINDEREMAIL_SENT)) != 'TRUE' THEN 1 ELSE 0 END)
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            ORDER BY ord
+        """
+        df = _df(sql, max_rows=9)
+        if df.empty:
+            return "No suppression data found."
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df["STAGE_LABEL"].tolist(),
+            y=df["SUPPRESSED_AT_STAGE"].tolist(),
+            mode="lines+markers+text",
+            line=dict(color=_P["danger"], width=3),
+            marker=dict(size=10, color=_P["danger"], line=dict(color="#ffffff", width=2)),
+            text=[f"{int(v):,}" for v in df["SUPPRESSED_AT_STAGE"]],
+            textposition="top center",
+            textfont=dict(size=11),
+            name="Dropped at Stage",
+        ))
+        fig.update_layout(
+            **_layout("Stage-Level Suppression — Prospects Dropped at Each Stage", height=460),
+            xaxis=dict(title="Journey Stage", gridcolor=_P["grid"], tickangle=-30),
+            yaxis=dict(title="Suppressed / Dropped", gridcolor=_P["grid"]),
+            showlegend=False,
+        )
+        chart_store.push(fig)
+        peak = df.sort_values("SUPPRESSED_AT_STAGE", ascending=False).iloc[0]
+        return (
+            f"Stage suppression line chart generated. "
+            f"Highest dropout: {peak['STAGE_LABEL']} ({int(peak['SUPPRESSED_AT_STAGE']):,} prospects dropped)."
+        )
+
+    except Exception as exc:
+        logger.error("stage_suppression_line_chart: %s", exc, exc_info=True)
+        return f"Could not generate stage suppression chart: {exc}"
 
 
 # ===========================================================================

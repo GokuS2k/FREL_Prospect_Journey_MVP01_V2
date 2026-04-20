@@ -3,107 +3,52 @@ semantic_layer:
   name: "fipsar_prospect_journey_intelligence_semantic_layer"
   owner: "FIPSAR"
   domain: "Life Sciences / Specialty Pharma / Prospect Journey Intelligence"
-  purpose: >
-    Provide a rich semantic layer for Analyst, Search, Conversational AI, and Agentic AI
-    use cases on top of the FIPSAR Snowflake MVP. This semantic layer explains the business
-    meaning, data flow, relationships, quality rules, funnel logic, lineage expectations,
-    observability patterns, and AI-ready concepts required for accurate retrieval, reasoning,
-    similarity search, grounding, and validation.
+  purpose: "Semantic layer for Conversational AI and Agentic AI on the FIPSAR Snowflake MVP."
 
   high_level_goal:
     summary: >
-      The platform tracks how raw campaign leads enter the system, how they are validated and
-      mastered into Prospects, how valid Prospects move through Salesforce Marketing Cloud
-      journeys, where records drop in the funnel, where suppression and fatal issues occur,
-      and how downstream analytics and AI can detect, explain, and optimize those patterns.
-    primary_business_objectives:
-      - "Measure lead intake volume and source contribution."
-      - "Identify invalid leads and the reasons they were rejected."
-      - "Track valid Prospects through SFMC journey stages and engagement events."
-      - "Measure funnel drop-offs across intake, mastering, sending, delivery, engagement, and suppression."
-      - "Provide complete data lineage and observability from raw intake to marts and AI outputs."
-      - "Enable AI use cases such as analyst Q&A, semantic search, conversational exploration, anomaly detection, trust scoring, and action recommendation."
-    mvp_focus:
-      - "Data flow understanding"
-      - "Lineage"
-      - "Observability"
-      - "Funnel loss measurement"
-      - "AI capture of quality and engagement signals"
+      Tracks raw campaign leads through validation and mastering into Prospects, through SFMC
+      journeys and engagement events, measuring funnel drop-offs, suppression, and AI-driven insights.
     closed_loop_intelligence_pattern: "Data -> Validation -> Prospect Mastering -> Engagement -> Mart -> AI Features -> Scores -> Insights / Actions"
 
   terminology:
     canonical_terms:
       lead:
-        definition: >
-          A record that has newly entered the system through intake and currently exists in
-          QA_FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE. At this stage it is unmastered and not yet trusted.
+        definition: "Unmastered record in STG_PROSPECT_INTAKE. Pre-validation; not yet trusted."
         lifecycle_stage: "Pre-validation"
-        allowed_synonyms:
-          - "incoming lead"
-          - "raw lead"
-          - "campaign lead"
-        forbidden_synonyms:
-          - "prospect"
-          - "patient"
+        allowed_synonyms: ["incoming lead", "raw lead", "campaign lead"]
+        forbidden_synonyms: ["prospect", "patient"]
       invalid_lead:
-        definition: >
-          A Lead that failed required quality/mastering rules and was diverted to
-          QA_FIPSAR_AUDIT.PIPELINE_AUDIT.DQ_REJECTION_LOG instead of becoming a valid Prospect.
+        definition: "Lead that failed mastering rules; diverted to DQ_REJECTION_LOG instead of PHI_PROSPECT_MASTER."
         lifecycle_stage: "Rejected during validation"
-        examples:
-          - "NULL_EMAIL"
-          - "NULL_PHONE_NUMBER"
-          - "NO_CONSENT"
+        examples: ["NULL_EMAIL", "NULL_PHONE_NUMBER", "NO_CONSENT"]
       prospect:
-        definition: >
-          A Lead that passed required mastering rules and was loaded into
-          QA_FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER. Only after this point should the record
-          be referred to as a Prospect in the business context.
+        definition: "Lead that passed mastering rules and was loaded into PHI_PROSPECT_MASTER."
         lifecycle_stage: "Mastered and valid"
-        allowed_synonyms:
-          - "valid prospect"
-          - "mastered prospect"
-        forbidden_synonyms:
-          - "lead"
-          - "patient"
+        allowed_synonyms: ["valid prospect", "mastered prospect"]
+        forbidden_synonyms: ["lead", "patient"]
       subscriber_key:
         definition: >
-          The SFMC engagement identity key. SUBSCRIBER_KEY in all SFMC event tables (RAW_SFMC_SENT,
-          RAW_SFMC_OPENS, etc.) and in FACT_SFMC_ENGAGEMENT IS the MASTER_PATIENT_ID (FIP... format).
-          Join directly: fe.SUBSCRIBER_KEY = dp.MASTER_PATIENT_ID. No crosswalk needed for
-          engagement → prospect bridging. PATIENT_IDENTITY_XREF exists for identity audit purposes
-          and email-based lookups, not for the primary SFMC engagement join.
+          SFMC engagement identity key. SUBSCRIBER_KEY in RAW_SFMC_* and FACT_SFMC_ENGAGEMENT IS
+          the MASTER_PATIENT_ID (FIP... format). Join directly: fe.SUBSCRIBER_KEY = dp.MASTER_PATIENT_ID.
+          No crosswalk needed. PATIENT_IDENTITY_XREF is for identity audit only, not the primary join.
       master_prospect_id:
-        definition: >
-          Canonical enterprise identifier for a valid mastered Prospect. Physical column name in
-          current tables is MASTER_PATIENT_ID, but business meaning in this MVP is Master Prospect ID.
+        definition: "Canonical enterprise identifier for a mastered Prospect. Physical column: MASTER_PATIENT_ID."
       journey:
         definition: >
-          The end-to-end path including the sequence of touchpoints, actions, decisions, and channels
-          that move a prospect across stages (and sometimes back and forth). The Journey is the MOTION;
-          stages are the STOPS along that journey. There are 4 journeys (J01 Welcome, J02 Nurture,
-          J03 Conversion, J04 ReEngagement) that together span the 9 stages.
-        allowed_synonyms:
-          - "prospect journey"
-          - "communication path"
+          End-to-end path of touchpoints, actions, and channels that MOVE a prospect across stages.
+          Journey = MOTION; stages = STOPS. 4 journeys: J01 Welcome, J02 Nurture, J03 Conversion, J04 ReEngagement.
+        allowed_synonyms: ["prospect journey", "communication path"]
       stage:
         definition: >
-          A snapshot phase of the relationship — a discrete point-in-time position that a prospect
-          occupies in the lifecycle. There are exactly 9 stages. Stages are STATIC positions;
-          a prospect sits IN a stage. Analysing stages reveals WHERE a prospect is, while
-          analysing journeys reveals HOW they got there.
+          Discrete point-in-time position in the lifecycle. Exactly 9 stages. STATIC positions —
+          reveals WHERE a prospect is (vs journeys which reveal HOW they got there).
       suppression:
-        definition: >
-          A business or operational outcome where an intended send did not proceed and the record
-          should be captured as a rejection/observability signal. Rejection reasons include SUPPRESSED and FATAL_ERROR.
+        definition: "Intended send that did not proceed; captured as rejection/observability signal. Reasons: SUPPRESSED, FATAL_ERROR."
       observability:
-        definition: >
-          The ability to trace record movement, row loss, rejection reasons, event failures, and
-          transformation outcomes across the pipeline.
+        definition: "Ability to trace record movement, row loss, rejection reasons, event failures, and transformation outcomes across the pipeline."
       lineage:
-        definition: >
-          The end-to-end path and transformations a record undergoes from source intake through mastering,
-          warehouse modeling, marts, and AI feature/scoring layers.
+        definition: "End-to-end path a record undergoes from source intake through mastering, warehouse modeling, marts, and AI scoring."
 
   naming_conventions:
     business_naming_rules:
@@ -123,24 +68,11 @@ semantic_layer:
       AI_SEMANTIC: "Scored / semantically enriched AI layer"
       PIPELINE_AUDIT: "Audit and DQ observability layer"
 
-  systems:
-    source_systems:
-      - name: "Campaign / App / API / Form Intake"
-        function: "Lead creation"
-      - name: "Salesforce Marketing Cloud (SFMC)"
-        function: "Email journey execution and engagement event generation"
-    platform_systems:
-      - name: "Snowflake"
-        function: "Core storage, warehouse, mart, feature, and semantic AI backbone"
-      - name: "AI Consumption Layer"
-        function: "Analyst, Search, Conversational AI, and Agents"
-
   demo_context:
     summary: >
-      This Prospect Journey MVP is demonstrated using representative Snowflake data (including
-      synthetic rows) shaped for SFMC journey and funnel analytics. Business definitions, join
-      rules, date-column rules, and tool usage below apply the same way as for production-shaped
-      datasets—always ground answers in tool results for the active environment.
+      MVP using representative Snowflake data (including synthetic rows) for SFMC journey and
+      funnel analytics. All definitions, join rules, and date rules apply — always ground answers
+      in tool results.
 
   prompt_compact_tables: true
 
@@ -384,11 +316,7 @@ semantic_layer:
                 date_parsing_note: "Use DATE(EVENT_TIMESTAMP) BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD' for date filtering. NEVER use _LOADED_AT."
 
       QA_FIPSAR_SFMC_EVENTS:
-        description: "Raw SFMC event landing layer — primary fallback when FACT_SFMC_ENGAGEMENT is empty"
-        query_guidance: >
-          When FACT_SFMC_ENGAGEMENT returns no rows, query these raw tables using a UNION ALL.
-          All event tables share: SUBSCRIBER_KEY (identity bridge key) and JOB_ID (links to DIM_SFMC_JOB).
-          Join JOB_ID to QA_FIPSAR_DW.GOLD.DIM_SFMC_JOB to get JOURNEY_TYPE and MAPPED_STAGE.
+        description: "Raw SFMC event landing layer — fallback when FACT_SFMC_ENGAGEMENT is empty. All tables share SUBSCRIBER_KEY + JOB_ID; join JOB_ID to DIM_SFMC_JOB for JOURNEY_TYPE/MAPPED_STAGE."
         schemas:
           RAW_EVENTS:
             tables:
@@ -448,11 +376,7 @@ semantic_layer:
                   - "BOUNCE_TYPE"
               QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_UNSUBSCRIBES:
                 grain: "One raw unsubscribe event per subscriber"
-                business_role: >
-                  Unsubscribe signals — primary source for WHY a prospect stopped receiving emails.
-                  SUBSCRIBER_KEY = MASTER_PATIENT_ID (FIP... format). Join to JOURNEY_DETAILS:
-                  RAW_SFMC_UNSUBSCRIBES.SUBSCRIBER_KEY = RAW_SFMC_PROSPECT_JOURNEY_DETAILS.PROSPECT_ID
-                  to explain why a suppressed prospect did not receive a specific stage email.
+                business_role: "Unsubscribe signals. SUBSCRIBER_KEY = MASTER_PATIENT_ID. Join to JOURNEY_DETAILS on SUBSCRIBER_KEY = PROSPECT_ID to explain stage-level suppression."
                 key_columns:
                   - "ACCOUNT_ID"
                   - "SUBSCRIBER_KEY"
@@ -485,12 +409,8 @@ semantic_layer:
                   - "EMAIL_NAME"
                   - "EMAIL_SUBJECT"
               QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_C:
-                grain: "One row per prospect record in SFMC — current snapshot of what is loaded in SFMC"
-                business_role: >
-                  SFMC-side current snapshot of prospect attributes. Key column is PROSPECT_ID which
-                  equals MASTER_PATIENT_ID (FIP... format). Join: RAW_SFMC_PROSPECT_C.PROSPECT_ID =
-                  DIM_PROSPECT.MASTER_PATIENT_ID. Use to reconcile which DIM_PROSPECT records were
-                  successfully exported to SFMC (inbound to SFMC).
+                grain: "One row per prospect record in SFMC — current snapshot"
+                business_role: "SFMC-side prospect snapshot. PROSPECT_ID = MASTER_PATIENT_ID. Join to DIM_PROSPECT to reconcile which prospects were successfully exported to SFMC."
                 key_columns:
                   - "PROSPECT_ID"
                   - "FIRST_NAME"
@@ -506,10 +426,7 @@ semantic_layer:
                   - "Missing rows = prospect went outbound but was not loaded in SFMC"
               QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_C_HISTORY:
                 grain: "One row per historical batch load of prospect attributes to SFMC"
-                business_role: >
-                  Tracks historical changes to prospect attributes in SFMC over time. Each batch load
-                  creates a new history row. Used to audit the state of prospect data in SFMC at a
-                  point-in-time and verify data freshness of outbound exports.
+                business_role: "Historical SFMC prospect attribute changes by batch. Used to audit point-in-time SFMC state and outbound export freshness."
                 key_columns:
                   - "PROSPECT_ID"
                   - "FIRST_NAME"
@@ -527,12 +444,10 @@ semantic_layer:
               QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS:
                 grain: "One row per prospect — wide table with per-stage sent flags and journey completion status"
                 business_role: >
-                  Tracks each prospect's journey progress across all 9 stages. This is a WIDE table
-                  where each stage has its own SENT flag (VARCHAR 'True'/'False') and SENT_DATE column.
-                  SUPPRESSION_FLAG drives suppression observability: when it is TRUE/YES/Y/1,
-                  the record is written to DQ_REJECTION_LOG with REJECTION_REASON = 'SUPPRESSED_PROSPECT',
-                  and IS_SUPPRESSED = TRUE in FACT_SFMC_ENGAGEMENT.
-                  Key: PROSPECT_ID = MASTER_PATIENT_ID (FIP... format).
+                  Wide table tracking each prospect's progress across all 9 stages. Each stage has a
+                  SENT flag (VARCHAR 'True'/'False') and SENT_DATE column. SUPPRESSION_FLAG=TRUE/YES/Y/1
+                  writes to DQ_REJECTION_LOG (REJECTION_REASON='SUPPRESSED_PROSPECT') and sets
+                  IS_SUPPRESSED=TRUE in FACT_SFMC_ENGAGEMENT. Key: PROSPECT_ID = MASTER_PATIENT_ID.
                 key_columns:
                   - "PROSPECT_ID"
                   - "WELCOME_JOURNEY_COMPLETE"
@@ -615,11 +530,7 @@ semantic_layer:
                   - "REJECTED_AT"
 
       QA_FIPSAR_AI:
-        description: >
-          AI feature engineering, scoring, and semantic intelligence layer.
-          Powers 3 use cases: UC03 (Send-Time Optimization), UCA (Prospect 360 Scoring),
-          UCB (Signal Trust). Each follows FEAT_* (features) → SEM_* (current scores)
-          → HIST_* (historical archive), with AI_RUN_DETAILS tracking model runs.
+        description: "AI scoring layer. UC03 (Send-Time), UCA (Prospect 360), UCB (Signal Trust). Pattern: FEAT_* → SEM_* (current) → HIST_* (archive). AI_RUN_DETAILS tracks model runs."
         schemas:
           AI_FEATURES:
             tables:
@@ -764,9 +675,7 @@ semantic_layer:
 
   business_rules:
     intake_mastering_rules:
-      description: >
-        Incoming rows in STG_PROSPECT_INTAKE are treated as Leads. They must pass mandatory field
-        and business validation before being accepted into PHI_PROSPECT_MASTER and treated as Prospects.
+      description: "Leads in STG_PROSPECT_INTAKE must pass mandatory field and consent validation to be accepted into PHI_PROSPECT_MASTER as Prospects."
       mandatory_fields:
         - "FIRST_NAME"
         - "LAST_NAME"
@@ -785,10 +694,7 @@ semantic_layer:
           - "NULL_LAST_NAME"
           - "NULL_PHONE_NUMBER"
           - "INVALID_FILE_DATE"
-        notes_on_no_consent: >
-          NO_CONSENT is defined in the semantic model as a concept but is NOT currently enforced
-          as a rejection reason in the physical SP_LOAD_PHI_PROSPECT stored procedure.
-          Do not count NO_CONSENT rejections when summarising intake rejection reasons.
+        notes_on_no_consent: "NO_CONSENT is conceptual only — NOT enforced in the physical SP_LOAD_PHI_PROSPECT. Do not count NO_CONSENT rejections."
         pipeline_stage_mapping:
           staging_to_phi: >
             NULL_EMAIL, NULL_FIRST_NAME, NULL_LAST_NAME, NULL_PHONE_NUMBER, INVALID_FILE_DATE —
@@ -809,10 +715,7 @@ semantic_layer:
         - "Always use TABLE_NAME in DQ_REJECTION_LOG to distinguish which pipeline stage the rejection came from."
 
     silver_deduplication_rule:
-      description: >
-        Before loading to QA_FIPSAR_DW.SILVER.SLV_PROSPECT_MASTER, a deduplication check is run
-        against QA_FIPSAR_DW.BRONZE.BRZ_PROSPECT_MASTER. Duplicate records are NOT inserted into Silver.
-        Instead they are written to DQ_REJECTION_LOG.
+      description: "Before loading to SLV_PROSPECT_MASTER, duplicates on RECORD_ID are rejected to DQ_REJECTION_LOG instead of being inserted."
       source: "QA_FIPSAR_DW.BRONZE.BRZ_PROSPECT_MASTER"
       target: "QA_FIPSAR_DW.SILVER.SLV_PROSPECT_MASTER"
       rejection_destination: "QA_FIPSAR_AUDIT.PIPELINE_AUDIT.DQ_REJECTION_LOG"
@@ -821,17 +724,11 @@ semantic_layer:
         - "DUPLICATE_RECORD_ID_IN_BRONZE — duplicate RECORD_ID found within the current Bronze batch"
       dedup_key: "RECORD_ID (not MASTER_PATIENT_ID — the physical dedup key is RECORD_ID)"
       dq_log_table_name: "SLV_PROSPECT_MASTER"
-      scd2_behavior: >
-        SLV_PROSPECT_MASTER is SCD Type 2. Each accepted record gets EFF_START_DATE,
-        EFF_END_DATE (NULL for current), IS_CURRENT flag, and VERSION_NUM.
-        When a prospect record is updated, the prior row is closed (EFF_END_DATE set, IS_CURRENT=FALSE)
-        and a new row is opened (IS_CURRENT=TRUE, VERSION_NUM incremented).
+      scd2_behavior: "SLV_PROSPECT_MASTER is SCD Type 2: EFF_START_DATE, EFF_END_DATE (NULL=current), IS_CURRENT, VERSION_NUM."
       rule: "Only the canonical RECORD_ID version is kept; duplicates are rejected to DQ_REJECTION_LOG"
 
     sfmc_event_rules:
-      description: >
-        SFMC raw events are ingested into raw event tables, modeled into FACT_SFMC_ENGAGEMENT,
-        and interpreted through journey, stage, and event-type logic.
+      description: "SFMC raw events ingested into RAW_SFMC_* tables, modeled into FACT_SFMC_ENGAGEMENT."
       valid_event_types:
         - "SENT"
         - "OPEN"
@@ -841,9 +738,7 @@ semantic_layer:
         - "SPAM"
         - "UNSENT"
       suppression_outcomes:
-        description: >
-          Some send outcomes represent suppression or fatal failures. These are observable
-          in the mart and AI layers and are written to DQ_REJECTION_LOG.
+        description: "Suppression/fatal send outcomes are observable in mart and AI layers and written to DQ_REJECTION_LOG."
         rejection_reasons:
           - "SUPPRESSED_PROSPECT — prospect was suppressed before/during SFMC send (source: RAW_SFMC_PROSPECT_JOURNEY_DETAILS.SUPPRESSION_FLAG)"
           - "FATAL_ERROR — platform-level send failure"
@@ -866,142 +761,50 @@ semantic_layer:
   relationships:
     canonical_joins:
       - name: "lead_to_mastered_prospect"
-        from: "QA_FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE"
-        to: "QA_FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER"
+        from: "STG_PROSPECT_INTAKE"
+        to: "PHI_PROSPECT_MASTER"
         join_logic: "Mastering/validation process"
-        cardinality: "Many leads -> accepted mastered prospect records"
-      - name: "prospect_to_identity_xref"
-        from: "QA_FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER.MASTER_PATIENT_ID"
-        to: "QA_FIPSAR_PHI_HUB.PHI_CORE.PATIENT_IDENTITY_XREF.MASTER_PATIENT_ID"
-        join_logic: "Identity mapping"
-        cardinality: "One prospect -> one or more identity mappings"
-      - name: "phi_to_bronze"
-        from: "QA_FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER"
-        to: "QA_FIPSAR_DW.BRONZE.BRZ_PROSPECT_MASTER"
-        join_logic: "Direct warehouse copy"
-        cardinality: "1:1 row propagation"
-      - name: "bronze_to_silver"
-        from: "QA_FIPSAR_DW.BRONZE.BRZ_PROSPECT_MASTER"
-        to: "QA_FIPSAR_DW.SILVER.SLV_PROSPECT_MASTER"
-        join_logic: "Standardization + historization"
-        cardinality: "One bronze row may produce one or more historized silver versions over time"
-      - name: "silver_to_dim_prospect"
-        from: "QA_FIPSAR_DW.SILVER.SLV_PROSPECT_MASTER.MASTER_PATIENT_ID"
-        to: "QA_FIPSAR_DW.GOLD.DIM_PROSPECT.MASTER_PATIENT_ID"
-        join_logic: "Current mastered projection"
-        cardinality: "Many silver versions -> one current dimension prospect"
-      - name: "fact_prospect_intake_to_dim_prospect"
-        from: "QA_FIPSAR_DW.GOLD.FACT_PROSPECT_INTAKE.PROSPECT_KEY"
-        to: "QA_FIPSAR_DW.GOLD.DIM_PROSPECT.PROSPECT_KEY"
-        join_logic: "FK"
-        cardinality: "Many intake facts -> one prospect"
-      - name: "fact_prospect_intake_to_dim_channel"
-        from: "QA_FIPSAR_DW.GOLD.FACT_PROSPECT_INTAKE.CHANNEL_KEY"
-        to: "QA_FIPSAR_DW.GOLD.DIM_CHANNEL.CHANNEL_KEY"
-        join_logic: "FK"
-        cardinality: "Many intake facts -> one channel"
-      - name: "fact_prospect_intake_to_dim_date"
-        from: "QA_FIPSAR_DW.GOLD.FACT_PROSPECT_INTAKE.DATE_KEY"
-        to: "QA_FIPSAR_DW.GOLD.DIM_DATE.DATE_KEY"
-        join_logic: "FK"
-        cardinality: "Many intake facts -> one date"
-      - name: "fact_prospect_intake_to_dim_geography"
-        from: "QA_FIPSAR_DW.GOLD.FACT_PROSPECT_INTAKE.GEO_KEY"
-        to: "QA_FIPSAR_DW.GOLD.DIM_GEOGRAPHY.GEO_KEY"
-        join_logic: "FK"
-        cardinality: "Many intake facts -> one geography"
-      - name: "raw_job_metadata_to_dim_job"
-        from: "QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_JOB_METADATA.JOB_ID"
-        to: "QA_FIPSAR_DW.GOLD.DIM_SFMC_JOB.JOB_ID"
-        join_logic: "Job metadata conformance"
-        cardinality: "Many raw metadata rows -> one job dimension row"
-      - name: "fact_engagement_to_dim_job"
-        from: "QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT.JOB_KEY"
-        to: "QA_FIPSAR_DW.GOLD.DIM_SFMC_JOB.JOB_KEY"
-        join_logic: "FK"
-        cardinality: "Many engagement facts -> one job"
-      - name: "fact_engagement_to_dim_engagement_type"
-        from: "QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT.EVENT_TYPE_KEY"
-        to: "QA_FIPSAR_DW.GOLD.DIM_ENGAGEMENT_TYPE.EVENT_TYPE_KEY"
-        join_logic: "FK"
-        cardinality: "Many engagement facts -> one event type"
-      - name: "fact_engagement_to_dim_date"
-        from: "QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT.DATE_KEY"
-        to: "QA_FIPSAR_DW.GOLD.DIM_DATE.DATE_KEY"
-        join_logic: "FK"
-        cardinality: "Many engagement facts -> one date"
       - name: "subscriber_to_dim_prospect_direct"
-        from: "QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT.SUBSCRIBER_KEY"
-        to: "QA_FIPSAR_DW.GOLD.DIM_PROSPECT.MASTER_PATIENT_ID"
-        join_logic: "SUBSCRIBER_KEY IS the MASTER_PATIENT_ID (FIP... format). Direct join — no crosswalk needed."
+        from: "FACT_SFMC_ENGAGEMENT.SUBSCRIBER_KEY"
+        to: "DIM_PROSPECT.MASTER_PATIENT_ID"
         join_sql: "fe.SUBSCRIBER_KEY = dp.MASTER_PATIENT_ID"
-        cardinality: "Many engagement facts -> one prospect"
+        join_logic: "SUBSCRIBER_KEY IS the MASTER_PATIENT_ID — direct join, no crosswalk."
       - name: "raw_event_subscriber_to_dim_prospect"
-        from: "QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_SENT.SUBSCRIBER_KEY (and all raw event tables)"
-        to: "QA_FIPSAR_DW.GOLD.DIM_PROSPECT.MASTER_PATIENT_ID"
-        join_logic: "SUBSCRIBER_KEY in raw event tables = MASTER_PATIENT_ID. Direct join."
+        from: "RAW_SFMC_SENT.SUBSCRIBER_KEY (all raw event tables)"
+        to: "DIM_PROSPECT.MASTER_PATIENT_ID"
         join_sql: "raw.SUBSCRIBER_KEY = dp.MASTER_PATIENT_ID"
-        cardinality: "Many raw events -> one prospect"
       - name: "sfmc_prospect_c_to_dim_prospect"
-        from: "QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_C.PROSPECT_ID"
-        to: "QA_FIPSAR_DW.GOLD.DIM_PROSPECT.MASTER_PATIENT_ID"
-        join_logic: "PROSPECT_ID = MASTER_PATIENT_ID. Used for outbound reconciliation."
+        from: "RAW_SFMC_PROSPECT_C.PROSPECT_ID"
+        to: "DIM_PROSPECT.MASTER_PATIENT_ID"
         join_sql: "pc.PROSPECT_ID = dp.MASTER_PATIENT_ID"
-        cardinality: "One SFMC prospect record -> one DIM_PROSPECT row"
+        join_logic: "Outbound reconciliation — which DIM_PROSPECT records reached SFMC."
       - name: "journey_details_to_dim_prospect"
-        from: "QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS.PROSPECT_ID"
-        to: "QA_FIPSAR_DW.GOLD.DIM_PROSPECT.MASTER_PATIENT_ID"
-        join_logic: "PROSPECT_ID = MASTER_PATIENT_ID. Direct join for per-stage suppression analysis."
+        from: "RAW_SFMC_PROSPECT_JOURNEY_DETAILS.PROSPECT_ID"
+        to: "DIM_PROSPECT.MASTER_PATIENT_ID"
         join_sql: "jd.PROSPECT_ID = dp.MASTER_PATIENT_ID"
-        cardinality: "One journey detail row -> one prospect"
       - name: "dim_prospect_outbound_to_sfmc"
-        from: "QA_FIPSAR_DW.GOLD.DIM_PROSPECT (active records only)"
-        to: "QA_FIPSAR_DW.GOLD.VW_SFMC_PROSPECT_OUTBOUND -> S3 -> SFMC"
-        join_logic: "Only IS_CURRENT=TRUE, DQ_PASSED=TRUE records flow via outbound view. Non-active prospects are NOT exported."
-        cardinality: "Subset of DIM_PROSPECT -> SFMC journey targeting"
+        from: "DIM_PROSPECT (IS_CURRENT=TRUE, DQ_PASSED=TRUE)"
+        to: "VW_SFMC_PROSPECT_OUTBOUND -> S3 -> SFMC"
+        join_logic: "Only active records are exported. Non-active prospects are NOT in SFMC journeys."
       - name: "identity_xref_for_audit"
-        from: "QA_FIPSAR_PHI_HUB.PHI_CORE.PATIENT_IDENTITY_XREF.MASTER_PATIENT_ID"
-        to: "QA_FIPSAR_DW.GOLD.DIM_PROSPECT.MASTER_PATIENT_ID"
-        join_logic: "Identity audit and email-based lookup. IDENTITY_KEY is the composite email+name string — NOT the SFMC subscriber join key."
-        cardinality: "One identity mapping -> one prospect"
+        from: "PATIENT_IDENTITY_XREF.MASTER_PATIENT_ID"
+        to: "DIM_PROSPECT.MASTER_PATIENT_ID"
+        join_logic: "Identity audit only. IDENTITY_KEY is email+name composite — NOT the SFMC subscriber join key."
+      - name: "fact_engagement_to_dim_job"
+        from: "FACT_SFMC_ENGAGEMENT.JOB_KEY"
+        to: "DIM_SFMC_JOB.JOB_KEY"
+        join_logic: "FK"
+      - name: "silver_to_dim_prospect"
+        from: "SLV_PROSPECT_MASTER.MASTER_PATIENT_ID"
+        to: "DIM_PROSPECT.MASTER_PATIENT_ID"
+        join_logic: "Current mastered projection"
       - name: "mart_inputs"
-        from:
-          - "QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT"
-          - "QA_FIPSAR_DW.GOLD.DIM_SFMC_JOB"
-          - "QA_FIPSAR_DW.GOLD.DIM_ENGAGEMENT_TYPE"
-          - "QA_FIPSAR_DW.GOLD.DIM_DATE"
-          - "QA_FIPSAR_DW.GOLD.DIM_PROSPECT"
-          - "QA_FIPSAR_DW.GOLD.DIM_GEOGRAPHY"
-          - "QA_FIPSAR_DW.GOLD.FACT_PROSPECT_INTAKE"
-          - "QA_FIPSAR_PHI_HUB.PHI_CORE.PATIENT_IDENTITY_XREF"
-        to: "QA_FIPSAR_DW.GOLD.VW_MART_JOURNEY_INTELLIGENCE"
+        from: ["FACT_SFMC_ENGAGEMENT", "DIM_SFMC_JOB", "DIM_ENGAGEMENT_TYPE", "DIM_DATE", "DIM_PROSPECT", "DIM_GEOGRAPHY", "FACT_PROSPECT_INTAKE", "PATIENT_IDENTITY_XREF"]
+        to: "VW_MART_JOURNEY_INTELLIGENCE"
         join_logic: "Business mart composition"
-      - name: "gold_to_ai_features"
-        from:
-          - "QA_FIPSAR_DW.GOLD.DIM_PROSPECT"
-          - "QA_FIPSAR_DW.GOLD.FACT_PROSPECT_INTAKE"
-          - "QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT"
-          - "QA_FIPSAR_DW.GOLD.DIM_DATE"
-          - "QA_FIPSAR_DW.GOLD.DIM_SFMC_JOB"
-        to:
-          - "QA_FIPSAR_AI.AI_FEATURES.FEAT_UCA_PROSPECT_360"
-          - "QA_FIPSAR_AI.AI_FEATURES.FEAT_UC03_SEND_TIME"
-        join_logic: "Feature engineering"
-      - name: "ai_features_to_ai_scores"
-        from:
-          - "QA_FIPSAR_AI.AI_FEATURES.FEAT_UCA_PROSPECT_360"
-          - "QA_FIPSAR_AI.AI_FEATURES.FEAT_UC03_SEND_TIME"
-        to:
-          - "QA_FIPSAR_AI.AI_SEMANTIC.SEM_UCA_PROSPECT_360_SCORES"
-          - "QA_FIPSAR_AI.AI_SEMANTIC.SEM_UC03_SEND_TIME_SCORES"
-          - "QA_FIPSAR_AI.AI_SEMANTIC.SEM_UCB_SIGNAL_TRUST_SCORES"
-        join_logic: "Scoring and semantic projection"
 
   funnel_model:
-    description: >
-      The funnel is designed to make data loss, data acceptance, delivery loss, and engagement
-      progression measurable. AI and analyst systems should reason about the funnel as a sequence
-      of observable stages, not merely as a reporting artifact.
+    description: "Measures data loss, acceptance, delivery loss, and engagement progression across observable stages."
     stages:
       - stage_id: "F01"
         name: "Lead Intake"
@@ -1143,11 +946,7 @@ semantic_layer:
             email_names:
               - "Prospect_ReEngagement_02_Final_Reminder_Email"
     stage_intervals_days:
-      description: >
-        Fixed calendar intervals (in days) between consecutive journey stages.
-        All prospects follow the same schedule — intervals are uniform across the program.
-        These are used to compute EXPECTED_NEXT_STAGE_DATE for each prospect and to detect
-        missed sends (where actual delivered count < expected send count for a stage on a given date).
+      description: "Fixed calendar intervals (days) between consecutive stages. Used to compute EXPECTED_NEXT_STAGE_DATE and detect missed sends."
       intervals:
         stage_1_to_2: 3
         stage_2_to_3: 5
@@ -1164,9 +963,7 @@ semantic_layer:
         - "Example: On Stage 3 today, 100 prospects expected but only 80 SENT events recorded → 20 missed sends"
 
     missed_send_analytics:
-      description: >
-        Analytics pattern to detect and quantify prospects who should have received an email
-        in a given stage but did not. This is a critical observability metric.
+      description: "Detect prospects who should have received a stage email but did not (critical observability metric)."
       actual_send_source: "QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_SENT or QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT (EVENT_TYPE = SENT)"
       missed_send_reasons:
         - "SUPPRESSED_PROSPECT (SUPPRESSION_FLAG IN ('YES','Y','TRUE','1') in RAW_SFMC_PROSPECT_JOURNEY_DETAILS)"
@@ -1176,10 +973,7 @@ semantic_layer:
       observability_destination: "QA_FIPSAR_AUDIT.PIPELINE_AUDIT.DQ_REJECTION_LOG with REJECTION_REASON = 'SUPPRESSED_PROSPECT' or 'FATAL_ERROR'"
 
     per_stage_suppression_analytics:
-      description: >
-        Prospects can be suppressed at ANY of the 9 journey stages. Suppression is detected
-        via SUPPRESSION_FLAG in RAW_SFMC_PROSPECT_JOURNEY_DETAILS. The per-stage SENT flags
-        show which stages were reached before suppression.
+      description: "Suppression can occur at any of the 9 stages. Detected via SUPPRESSION_FLAG in RAW_SFMC_PROSPECT_JOURNEY_DETAILS; per-stage SENT flags show which stages were reached."
       key_tables:
         - "QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS — per-stage sent flags + dates"
         - "QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_UNSUBSCRIBES — WHY the prospect did not receive the next email"
@@ -1293,45 +1087,20 @@ semantic_layer:
 
   ai_use_cases:
     analyst:
-      description: >
-        Structured business analysis over prospect intake, journey performance, funnel loss,
-        suppression, and observability.
-      example_questions:
-        - "How many leads became Prospects last week by channel?"
-        - "What are the top rejection reasons for invalid leads?"
-        - "Which journey stage has the highest drop-off?"
-        - "How many sends were suppressed by channel or journey?"
+      description: "Structured analysis of intake, journey performance, funnel loss, suppression, observability."
     search:
-      description: >
-        Semantic retrieval over tables, business definitions, journey structure, rejection reasons,
-        and Prospect engagement patterns.
-      example_queries:
-        - "Find records related to low engagement re-engagement path"
-        - "Show all data assets involved in invalid lead handling"
-        - "Which tables define suppression and fatal errors?"
+      description: "Semantic retrieval over tables, business definitions, journey structure, rejection reasons."
     conversational_ai:
-      description: >
-        Natural language grounded interpretation of the pipeline, funnel, and metrics with
-        lineage-aware answers.
+      description: "Natural language interpretation of the pipeline, funnel, and metrics with lineage-aware answers."
       requirements:
         - "Must distinguish Lead vs Prospect."
-        - "Must explain DQ rejection behavior."
-        - "Must explain suppression as a funnel loss, not just a technical error."
+        - "Must explain suppression as funnel loss, not just a technical error."
         - "Must ground answers in full table names."
     agents:
-      description: >
-        Multi-step reasoning agents that trace lineage, detect anomalies, summarize funnel loss,
-        and recommend actions.
-      action_patterns:
-        - "Investigate spike in NULL_EMAIL invalid leads"
-        - "Compare suppression trend across journeys"
-        - "Surface records and stages causing severe drop-off"
-        - "Recommend next best send time or trust low-score review"
+      description: "Multi-step agents that trace lineage, detect anomalies, summarize funnel loss, recommend actions."
 
   similarity_search:
-    purpose: >
-      Allow retrieval systems to find semantically similar business entities, journey patterns,
-      rejection scenarios, suppression patterns, and Prospect behavior profiles.
+    purpose: "Retrieval of semantically similar business entities, journey patterns, rejection scenarios, and Prospect behavior profiles."
     entity_spaces:
       prospect_profile_similarity:
         source_tables:

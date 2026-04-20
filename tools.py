@@ -1419,69 +1419,89 @@ def get_sfmc_stage_suppression(
     date_filter_s9  = f"AND jd.LOWENGAGEMENTFINALREMINDEREMAIL_SENT_DATE = '{target_date}'"   if target_date else ""
 
     # --- PART 1: Per-stage expected vs actual counts ---
+    # "suppressed_at_stage" = prospects who received the PREVIOUS stage email but did NOT
+    # receive THIS stage email (true per-stage dropout). SUPPRESSION_FLAG is a global
+    # prospect-level column so using it gives the same 120 across all stages — wrong.
     stage_summary_sql = textwrap.dedent(f"""
         SELECT
             'Stage 1 — Welcome Email (J01)'         AS stage,
             COUNT(*)                                 AS total_prospects,
             SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_WELCOMEEMAIL_SENT)) = 'TRUE'    THEN 1 ELSE 0 END) AS sent,
             SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_WELCOMEEMAIL_SENT)) != 'TRUE'   THEN 1 ELSE 0 END) AS not_sent,
-            SUM(CASE WHEN UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1')   THEN 1 ELSE 0 END) AS suppressed
+            -- Stage 1 has no prior stage; anyone not sent is dropped at entry
+            SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_WELCOMEEMAIL_SENT)) != 'TRUE'   THEN 1 ELSE 0 END) AS suppressed_at_stage
         FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS jd
         WHERE 1=1 {prospect_filter}
         UNION ALL
         SELECT 'Stage 2 — Education Email (J01)', COUNT(*),
             SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT)) = 'TRUE'  THEN 1 ELSE 0 END),
             SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT)) != 'TRUE' THEN 1 ELSE 0 END),
-            SUM(CASE WHEN UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1')   THEN 1 ELSE 0 END)
+            -- Received Stage 1 but NOT Stage 2
+            SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_WELCOMEEMAIL_SENT))    = 'TRUE'
+                      AND UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT)) != 'TRUE' THEN 1 ELSE 0 END)
         FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS jd
         WHERE 1=1 {prospect_filter}
         UNION ALL
         SELECT 'Stage 3 — Nurture Edu Email 1 (J02)', COUNT(*),
             SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT)) = 'TRUE'  THEN 1 ELSE 0 END),
             SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT)) != 'TRUE' THEN 1 ELSE 0 END),
-            SUM(CASE WHEN UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1')    THEN 1 ELSE 0 END)
+            -- Received Stage 2 but NOT Stage 3
+            SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT))    = 'TRUE'
+                      AND UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT)) != 'TRUE' THEN 1 ELSE 0 END)
         FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS jd
         WHERE 1=1 {prospect_filter}
         UNION ALL
         SELECT 'Stage 4 — Nurture Edu Email 2 (J02)', COUNT(*),
             SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT)) = 'TRUE'  THEN 1 ELSE 0 END),
             SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT)) != 'TRUE' THEN 1 ELSE 0 END),
-            SUM(CASE WHEN UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1')    THEN 1 ELSE 0 END)
+            -- Received Stage 3 but NOT Stage 4
+            SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT))  = 'TRUE'
+                      AND UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT)) != 'TRUE' THEN 1 ELSE 0 END)
         FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS jd
         WHERE 1=1 {prospect_filter}
         UNION ALL
         SELECT 'Stage 5 — Prospect Story Email (J02)', COUNT(*),
             SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT)) = 'TRUE'  THEN 1 ELSE 0 END),
             SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT)) != 'TRUE' THEN 1 ELSE 0 END),
-            SUM(CASE WHEN UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1')       THEN 1 ELSE 0 END)
+            -- Received Stage 4 but NOT Stage 5
+            SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT))      = 'TRUE'
+                      AND UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT)) != 'TRUE' THEN 1 ELSE 0 END)
         FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS jd
         WHERE 1=1 {prospect_filter}
         UNION ALL
         SELECT 'Stage 6 — Conversion Email (J03)', COUNT(*),
             SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT)) = 'TRUE'  THEN 1 ELSE 0 END),
             SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT)) != 'TRUE' THEN 1 ELSE 0 END),
-            SUM(CASE WHEN UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1')    THEN 1 ELSE 0 END)
+            -- Received Stage 5 but NOT Stage 6
+            SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT)) = 'TRUE'
+                      AND UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT))  != 'TRUE' THEN 1 ELSE 0 END)
         FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS jd
         WHERE 1=1 {prospect_filter}
         UNION ALL
         SELECT 'Stage 7 — Reminder Email (J03)', COUNT(*),
             SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT)) = 'TRUE'  THEN 1 ELSE 0 END),
             SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT)) != 'TRUE' THEN 1 ELSE 0 END),
-            SUM(CASE WHEN UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1')  THEN 1 ELSE 0 END)
+            -- Received Stage 6 but NOT Stage 7
+            SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT)) = 'TRUE'
+                      AND UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT))  != 'TRUE' THEN 1 ELSE 0 END)
         FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS jd
         WHERE 1=1 {prospect_filter}
         UNION ALL
         SELECT 'Stage 8 — Re-engagement Email (J04)', COUNT(*),
             SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT)) = 'TRUE'  THEN 1 ELSE 0 END),
             SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT)) != 'TRUE' THEN 1 ELSE 0 END),
-            SUM(CASE WHEN UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1')     THEN 1 ELSE 0 END)
+            -- Received Stage 7 but NOT Stage 8
+            SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT))      = 'TRUE'
+                      AND UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT)) != 'TRUE' THEN 1 ELSE 0 END)
         FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS jd
         WHERE 1=1 {prospect_filter}
         UNION ALL
         SELECT 'Stage 9 — Final Reminder Email (J04)', COUNT(*),
             SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENTFINALREMINDEREMAIL_SENT)) = 'TRUE'  THEN 1 ELSE 0 END),
             SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENTFINALREMINDEREMAIL_SENT)) != 'TRUE' THEN 1 ELSE 0 END),
-            SUM(CASE WHEN UPPER(TRIM(SUPPRESSION_FLAG)) IN ('YES','Y','TRUE','1')     THEN 1 ELSE 0 END)
+            -- Received Stage 8 but NOT Stage 9
+            SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT))   = 'TRUE'
+                      AND UPPER(TRIM(LOWENGAGEMENTFINALREMINDEREMAIL_SENT)) != 'TRUE' THEN 1 ELSE 0 END)
         FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS jd
         WHERE 1=1 {prospect_filter}
         ORDER BY stage
@@ -2006,17 +2026,36 @@ def chart_email_kpi_scorecard(
 @tool
 def chart_journey_stage_progression() -> str:
     """
-    Generate a horizontal bar chart showing how many prospects reached (had sent = TRUE)
-    each of the 9 SFMC journey stages. Reveals exactly where prospects drop off across
-    Stage 1 (Welcome) through Stage 9 (Final Reminder).
+    Generate a line chart showing how many prospects reached (had sent = TRUE)
+    each of the 9 SFMC journey stages. The descending line reveals exactly where
+    prospects drop off across Stage 1 (Welcome) through Stage 9 (Final Reminder).
 
     Use this when the user asks:
     - "How many prospects reached each stage?"
     - "Journey progression chart" / "Stage completion chart"
+    - "What percentage are progressing through each step?"
     - "Which stage has the biggest drop-off?"
     - "Show stage-by-stage reach"
     """
     return _charts.journey_stage_progression_chart()
+
+
+@tool
+def chart_stage_suppression() -> str:
+    """
+    Generate a line chart showing how many prospects dropped out (were suppressed or
+    did not progress) at each of the 9 SFMC journey stages.
+
+    Each point = prospects who received the previous stage email but did NOT receive
+    this stage's email — the true per-stage dropout count.
+
+    Use this when the user asks:
+    - "Show suppression counts by stage"
+    - "How many prospects were suppressed at each stage?"
+    - "Suppression line chart" / "Where is suppression highest?"
+    - "Stage-level suppression breakdown"
+    """
+    return _charts.stage_suppression_line_chart()
 
 
 @tool
@@ -2116,6 +2155,7 @@ ALL_TOOLS = [
     chart_bounce_analysis,
     chart_email_kpi_scorecard,
     chart_journey_stage_progression,
+    chart_stage_suppression,
     chart_daily_engagement_trend,
     chart_prospect_channel_mix,
     chart_funnel_waterfall,

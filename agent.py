@@ -28,10 +28,22 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
 from config import app_config
-from semantic_model import SYSTEM_PROMPT
+from semantic_model import SYSTEM_PROMPT, PERSONA_INSTRUCTIONS
 from tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Active persona (set by app.py before each chat() call)
+# ---------------------------------------------------------------------------
+
+_active_persona: str = "General"
+
+
+def set_persona(persona: str) -> None:
+    """Set the active persona for the next agent call."""
+    global _active_persona
+    _active_persona = persona
 
 # ---------------------------------------------------------------------------
 # LLM setup
@@ -72,7 +84,10 @@ def _state_modifier(state: dict) -> list[BaseMessage]:
         "NEVER use your training-data cutoff date as 'today'.\n\n"
         "Follow the RESPONSE CONTRACT (tiered sections) in the system prompt for every final reply.\n"
     )
-    full_prompt = date_header + "\n" + SYSTEM_PROMPT
+    persona_addon = PERSONA_INSTRUCTIONS.get(_active_persona, "")
+    full_prompt = date_header + "\n" + SYSTEM_PROMPT + (
+        "\n\n" + persona_addon if persona_addon else ""
+    )
     messages = state.get("messages", [])
     return [SystemMessage(content=full_prompt)] + list(messages)
 
