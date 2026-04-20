@@ -29,20 +29,31 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from snowflake_connector import execute_query
+from fipsar_theme import (
+    ACCENT_PURPLE,
+    CYAN,
+    DANGER,
+    GRADIENT,
+    NAVY,
+    PAGE_BG,
+    PLOT_GRID,
+    SUCCESS,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+    WARNING,
+)
 
 logger = logging.getLogger(__name__)
 
-# ── Brand palette ──────────────────────────────────────────────────────────
-_NAVY   = "#0d2a5e"
-_BLUE   = "#1a4a9e"
-_SKY    = "#4a90d9"
-_CYAN   = "#06b6d4"
-_GREEN  = "#16a34a"
-_AMBER  = "#d97706"
-_RED    = "#dc2626"
-_ROSE   = "#e11d48"
-_SLATE  = "#64748b"
-_PURPLE = "#7c3aed"
+# ── Chart accents (semantic, on white) ─────────────────────────────────────
+_SKY = "#38BDF8"
+_BLUE_MID = "#0284C7"
+_GREEN = SUCCESS
+_AMBER = WARNING
+_RED = DANGER
+_ROSE = "#E11D48"
+_SLATE = TEXT_SECONDARY
+_PURPLE = ACCENT_PURPLE
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -99,7 +110,7 @@ def _journey_where(journey: str, col: str = "JOURNEY_CODE") -> str:
 def _fetch_filter_options() -> dict[str, list]:
     channels = _run("""
         SELECT DISTINCT COALESCE(UPPER(CHANNEL), 'UNKNOWN') AS CH
-        FROM FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE ORDER BY 1
+        FROM QA_FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE ORDER BY 1
     """)
     ch_list = ["All"] + (channels.iloc[:, 0].tolist() if not channels.empty else [])
     journeys = ["All", "J01 - Welcome", "J02 - Nurture",
@@ -110,17 +121,17 @@ def _fetch_filter_options() -> dict[str, list]:
 @st.cache_data(ttl=300, show_spinner=False)
 def _fetch_funnel_kpis(s: date, e: date, channel: str) -> dict[str, int]:
     ch = _chan_where(channel)
-    leads     = _scalar(_run(f"SELECT COUNT(*) FROM FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE WHERE {_date_flt('FILE_DATE',s,e)}{ch}"))
-    prospects = _scalar(_run(f"SELECT COUNT(*) FROM FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER  WHERE {_date_flt('FILE_DATE',s,e)}{ch}"))
+    leads     = _scalar(_run(f"SELECT COUNT(*) FROM QA_FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE WHERE {_date_flt('FILE_DATE',s,e)}{ch}"))
+    prospects = _scalar(_run(f"SELECT COUNT(*) FROM QA_FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER  WHERE {_date_flt('FILE_DATE',s,e)}{ch}"))
     dq_passed = _scalar(_run(f"""
         SELECT COUNT(*)
-        FROM FIPSAR_DW.SILVER.SLV_PROSPECT_MASTER
+        FROM QA_FIPSAR_DW.SILVER.SLV_PROSPECT_MASTER
         WHERE {_date_flt('FILE_DATE', s, e)}
           AND DQ_PASSED = TRUE
     """))
     sfmc_load = _scalar(_run(f"""
         SELECT COUNT(*)
-        FROM FIPSAR_DW.GOLD.DIM_PROSPECT
+        FROM QA_FIPSAR_DW.GOLD.DIM_PROSPECT
         WHERE {_date_flt('FIRST_INTAKE_DATE', s, e)}
     """))
 
@@ -129,7 +140,7 @@ def _fetch_funnel_kpis(s: date, e: date, channel: str) -> dict[str, int]:
     # differs from STG for reprocessed records, causing impossible negative sub-period counts.
     invalid = _scalar(_run(f"""
         SELECT COUNT(*)
-        FROM FIPSAR_AUDIT.PIPELINE_AUDIT.DQ_REJECTION_LOG
+        FROM QA_FIPSAR_AUDIT.PIPELINE_AUDIT.DQ_REJECTION_LOG
         WHERE UPPER(REJECTION_REASON) IN (
             'NULL_EMAIL','NULL_FIRST_NAME','NULL_LAST_NAME',
             'NULL_PHONE_NUMBER','INVALID_FILE_DATE','NO_CONSENT',
@@ -161,14 +172,14 @@ def _fetch_email_kpis(s: date, e: date, journey: str) -> dict[str, int]:
 
     # Emails Sent — gold table first, raw fallback
     sent = _scalar(_run(f"""
-        SELECT COUNT(*) FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
+        SELECT COUNT(*) FROM QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
         WHERE UPPER(EVENT_TYPE) = 'SENT'
           AND TRY_TO_DATE(EVENT_TIMESTAMP::STRING) BETWEEN '{s}' AND '{e}'
           {jw}
     """))
     if sent == 0:
         sent = _scalar(_run(f"""
-            SELECT COUNT(*) FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_SENT
+            SELECT COUNT(*) FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_SENT
             WHERE (
                 TRY_TO_DATE(SPLIT(EVENT_DATE, ' ')[0]::STRING, 'MM/DD/YYYY') BETWEEN '{s}' AND '{e}'
                 OR (
@@ -193,33 +204,33 @@ def _fetch_email_kpis(s: date, e: date, journey: str) -> dict[str, int]:
 
     opened = _scalar(_run(f"""
         SELECT COUNT(*)
-        FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_OPENS
+        FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_OPENS
         WHERE {_event_date_filter()}
     """))
     if opened == 0:
         opened = _scalar(_run(
-            "SELECT COUNT(*) FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_OPENS"
+            "SELECT COUNT(*) FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_OPENS"
         ))
 
     clicked = _scalar(_run(f"""
         SELECT COUNT(*)
-        FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_CLICKS
+        FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_CLICKS
         WHERE {_event_date_filter()}
     """))
     if clicked == 0:
         clicked = _scalar(_run(
-            "SELECT COUNT(*) FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_CLICKS"
+            "SELECT COUNT(*) FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_CLICKS"
         ))
 
     # Unsubscribes: DISTINCT SUBSCRIBER_KEY scoped to date range
     unsubscribed = _scalar(_run(f"""
         SELECT COUNT(DISTINCT SUBSCRIBER_KEY)
-        FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_UNSUBSCRIBES
+        FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_UNSUBSCRIBES
         WHERE {_event_date_filter()}
     """))
     if unsubscribed == 0:
         unsubscribed = _scalar(_run(
-            "SELECT COUNT(DISTINCT SUBSCRIBER_KEY) FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_UNSUBSCRIBES"
+            "SELECT COUNT(DISTINCT SUBSCRIBER_KEY) FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_UNSUBSCRIBES"
         ))
 
     return {
@@ -240,7 +251,7 @@ def _fetch_conversion_segments(s: date, e: date, journey: str) -> dict[str, int]
                 SUM(CASE WHEN UPPER(EVENT_TYPE)='CLICK' THEN 1 ELSE 0 END) AS clicks,
                 SUM(CASE WHEN UPPER(EVENT_TYPE)='OPEN'  THEN 1 ELSE 0 END) AS opens,
                 SUM(CASE WHEN UPPER(EVENT_TYPE)='SENT'  THEN 1 ELSE 0 END) AS sends
-            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
+            FROM QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
             WHERE TRY_TO_DATE(EVENT_TIMESTAMP::STRING) BETWEEN '{s}' AND '{e}' {jw}
             GROUP BY SUBSCRIBER_KEY
         )
@@ -254,19 +265,19 @@ def _fetch_conversion_segments(s: date, e: date, journey: str) -> dict[str, int]
     if df.empty or _df_sum(df) == 0:
         df = _run(f"""
             WITH sent AS (
-                SELECT SUBSCRIBER_KEY FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_SENT
+                SELECT SUBSCRIBER_KEY FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_SENT
                 WHERE (TRY_TO_DATE(SPLIT(EVENT_DATE,' ')[0]::STRING,'MM/DD/YYYY') BETWEEN '{s}' AND '{e}'
                        OR (TRY_TO_DATE(SPLIT(EVENT_DATE,' ')[0]::STRING,'MM/DD/YYYY') IS NULL
                            AND CAST(_LOADED_AT AS DATE) BETWEEN '{s}' AND '{e}'))
             ),
             opens AS (
-                SELECT DISTINCT SUBSCRIBER_KEY FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_OPENS
+                SELECT DISTINCT SUBSCRIBER_KEY FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_OPENS
                 WHERE (TRY_TO_DATE(SPLIT(EVENT_DATE,' ')[0]::STRING,'MM/DD/YYYY') BETWEEN '{s}' AND '{e}'
                        OR (TRY_TO_DATE(SPLIT(EVENT_DATE,' ')[0]::STRING,'MM/DD/YYYY') IS NULL
                            AND CAST(_LOADED_AT AS DATE) BETWEEN '{s}' AND '{e}'))
             ),
             clicks AS (
-                SELECT DISTINCT SUBSCRIBER_KEY FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_CLICKS
+                SELECT DISTINCT SUBSCRIBER_KEY FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_CLICKS
                 WHERE (TRY_TO_DATE(SPLIT(EVENT_DATE,' ')[0]::STRING,'MM/DD/YYYY') BETWEEN '{s}' AND '{e}'
                        OR (TRY_TO_DATE(SPLIT(EVENT_DATE,' ')[0]::STRING,'MM/DD/YYYY') IS NULL
                            AND CAST(_LOADED_AT AS DATE) BETWEEN '{s}' AND '{e}'))
@@ -309,8 +320,8 @@ def _fetch_prospect_segments(s: date, e: date, journey: str) -> dict[str, int]:
                                     THEN e.JOB_ID END)                            AS sends,
                 COUNT(DISTINCT CASE WHEN UPPER(e.EVENT_TYPE) IN ('BOUNCE','UNSUBSCRIBE')
                                     THEN e.JOB_ID END)                            AS neg
-            FROM FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER p
-            LEFT JOIN FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT e
+            FROM QA_FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER p
+            LEFT JOIN QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT e
                 ON e.SUBSCRIBER_KEY = p.MASTER_PATIENT_ID
                AND TRY_TO_DATE(e.EVENT_TIMESTAMP::STRING) BETWEEN '{s}' AND '{e}'
                {jw_eng}
@@ -332,7 +343,7 @@ def _fetch_prospect_segments(s: date, e: date, journey: str) -> dict[str, int]:
             SELECT
                 SUM(CASE WHEN IS_ACTIVE = TRUE  THEN 1 ELSE 0 END) AS active_ct,
                 SUM(CASE WHEN IS_ACTIVE = FALSE THEN 1 ELSE 0 END) AS inactive_ct
-            FROM FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
+            FROM QA_FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
             WHERE {_date_flt('FILE_DATE', s, e)}
         """)
         if not fb.empty:
@@ -362,13 +373,13 @@ def _fetch_daily_trend(s: date, e: date, channel: str) -> pd.DataFrame:
     return _run(f"""
         WITH leads AS (
             SELECT TRY_TO_DATE(FILE_DATE::STRING) AS dt, COUNT(*) AS lead_cnt
-            FROM FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE
+            FROM QA_FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE
             WHERE {_date_flt('FILE_DATE',s,e)}{ch}
             GROUP BY 1
         ),
         prsp AS (
             SELECT TRY_TO_DATE(FILE_DATE::STRING) AS dt, COUNT(*) AS prospect_cnt
-            FROM FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
+            FROM QA_FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
             WHERE {_date_flt('FILE_DATE',s,e)}{ch}
             GROUP BY 1
         )
@@ -392,7 +403,7 @@ def _df_sum(df: pd.DataFrame) -> float:
 _BASE_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(family="Inter, Arial, sans-serif", size=12, color="#334155"),
+    font=dict(family="Inter, Arial, sans-serif", size=12, color=TEXT_PRIMARY),
     margin=dict(l=8, r=8, t=48, b=16),
     legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font=dict(size=11)),
 )
@@ -407,7 +418,7 @@ def _chart_lead_funnel(
 ) -> go.Figure:
     labels = ["Leads", "Invalid Leads", "Prospects", "DQ Passed", "SFMC load"]
     values = [leads, invalid, prospects, dq_passed, sfmc_load]
-    colors = [_BLUE, _RED, _GREEN, _CYAN, _PURPLE]
+    colors = [CYAN, _RED, _GREEN, _SKY, _PURPLE]
     fig = go.Figure(go.Bar(
         x=labels,
         y=values,
@@ -417,18 +428,18 @@ def _chart_lead_funnel(
         ),
         text=[f"{v:,}" for v in values],
         textposition="outside",
-        textfont=dict(size=13, color="#1e293b", family="Inter, Arial, sans-serif"),
+        textfont=dict(size=13, color=TEXT_PRIMARY, family="Inter, Arial, sans-serif"),
         width=0.5,
     ))
     fig.update_layout(
         **_BASE_LAYOUT,
         title=dict(
             text="<b>Lead Funnel Overview</b>",
-            font=dict(size=13, color=_NAVY, family="Inter, Arial, sans-serif"),
+            font=dict(size=13, color=NAVY, family="Inter, Arial, sans-serif"),
             x=0.5, xanchor="center",
         ),
         xaxis=dict(showgrid=False, tickfont=dict(size=12), showline=False),
-        yaxis=dict(showgrid=True, gridcolor="#f1f5f9", zeroline=False,
+        yaxis=dict(showgrid=True, gridcolor=PLOT_GRID, zeroline=False,
                    tickfont=dict(size=10)),
     )
     return fig
@@ -437,7 +448,7 @@ def _chart_lead_funnel(
 def _chart_email_comparison(sent: int, opened: int, clicked: int, unsubscribed: int) -> go.Figure:
     labels = ["Sent", "Opened", "Clicked", "Unsubscribed"]
     values = [sent, opened, clicked, unsubscribed]
-    colors = [_GREEN, _CYAN, _PURPLE, _AMBER]
+    colors = [_GREEN, CYAN, _PURPLE, _AMBER]
     fig = go.Figure(go.Bar(
         x=labels, y=values,
         marker=dict(
@@ -446,18 +457,18 @@ def _chart_email_comparison(sent: int, opened: int, clicked: int, unsubscribed: 
         ),
         text=[f"{v:,}" for v in values],
         textposition="outside",
-        textfont=dict(size=13, color="#1e293b", family="Inter, Arial, sans-serif"),
+        textfont=dict(size=13, color=TEXT_PRIMARY, family="Inter, Arial, sans-serif"),
         width=0.5,
     ))
     fig.update_layout(
         **_BASE_LAYOUT,
         title=dict(
             text="<b>Email Delivery & Engagement Overview</b>",
-            font=dict(size=13, color=_NAVY, family="Inter, Arial, sans-serif"),
+            font=dict(size=13, color=NAVY, family="Inter, Arial, sans-serif"),
             x=0.5, xanchor="center",
         ),
         xaxis=dict(showgrid=False, tickfont=dict(size=11), showline=False),
-        yaxis=dict(showgrid=True, gridcolor="#f1f5f9", zeroline=False,
+        yaxis=dict(showgrid=True, gridcolor=PLOT_GRID, zeroline=False,
                    tickfont=dict(size=10)),
     )
     return fig
@@ -481,7 +492,7 @@ def _chart_conversion_probability(segs: dict[str, int]) -> go.Figure:
         **_BASE_LAYOUT,
         title=dict(
             text="<b>UC01 — Conversion Probability</b>",
-            font=dict(size=13, color=_NAVY, family="Inter, Arial, sans-serif"),
+            font=dict(size=13, color=NAVY, family="Inter, Arial, sans-serif"),
             x=0.5, xanchor="center",
         ),
     )
@@ -493,7 +504,7 @@ def _chart_prospect_segments(segs: dict[str, int]) -> go.Figure:
         labels=list(segs.keys()),
         values=list(segs.values()),
         marker=dict(
-            colors=[_BLUE, _CYAN, _AMBER, _ROSE],
+            colors=[CYAN, _BLUE_MID, _AMBER, _ROSE],
             line=dict(color="#ffffff", width=2.5),
         ),
         hole=0.44,
@@ -506,7 +517,7 @@ def _chart_prospect_segments(segs: dict[str, int]) -> go.Figure:
         **_BASE_LAYOUT,
         title=dict(
             text="<b>UC05 — Prospect Segments</b>",
-            font=dict(size=13, color=_NAVY, family="Inter, Arial, sans-serif"),
+            font=dict(size=13, color=NAVY, family="Inter, Arial, sans-serif"),
             x=0.5, xanchor="center",
         ),
     )
@@ -546,11 +557,11 @@ def _chart_daily_trend(df: pd.DataFrame) -> go.Figure | None:
         **_trend_layout,
         title=dict(
             text="<b>Daily Intake Trend — Leads vs Prospects</b>",
-            font=dict(size=13, color=_NAVY, family="Inter, Arial, sans-serif"),
+            font=dict(size=13, color=NAVY, family="Inter, Arial, sans-serif"),
             x=0.5, xanchor="center",
         ),
         xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=10), showline=False),
-        yaxis=dict(showgrid=True, gridcolor="#f1f5f9", zeroline=False, tickfont=dict(size=10)),
+        yaxis=dict(showgrid=True, gridcolor=PLOT_GRID, zeroline=False, tickfont=dict(size=10)),
         hovermode="x unified",
     )
     return fig
@@ -558,7 +569,7 @@ def _chart_daily_trend(df: pd.DataFrame) -> go.Figure | None:
 
 # ── Card HTML helpers ──────────────────────────────────────────────────────
 
-def _kpi_card(label: str, value: int, color: str, icon: str = "", sub: str = "") -> str:
+def _kpi_card(label: str, value: int, accent: str, icon: str = "", sub: str = "") -> str:
     sub_html = (
         f'<div style="font-size:11px;color:{_SLATE};margin-top:6px;font-weight:500">{sub}</div>'
         if sub else ""
@@ -569,18 +580,18 @@ def _kpi_card(label: str, value: int, color: str, icon: str = "", sub: str = "")
     )
     return f"""
     <div style="background:#ffffff;border-radius:14px;padding:20px 16px 16px;
-                box-shadow:0 2px 16px rgba(13,42,94,0.09);text-align:center;
-                border-top:4px solid {color};min-height:118px;
+                box-shadow:0 2px 16px rgba(0,0,0,0.07);text-align:center;
+                border-top:4px solid {accent};min-height:118px;
                 transition:box-shadow 0.2s;position:relative;overflow:hidden">
         <div style="position:absolute;top:0;left:0;right:0;bottom:0;
-                    background:linear-gradient(135deg,{color}08 0%,transparent 60%);
+                    background:linear-gradient(135deg,{accent}10 0%,transparent 55%);
                     pointer-events:none"></div>
         {icon_html}
         <div style="font-size:10.5px;color:{_SLATE};font-weight:700;
                     text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">
             {label}
         </div>
-        <div style="font-size:38px;font-weight:800;color:{color};line-height:1.0;
+        <div style="font-size:38px;font-weight:800;color:{NAVY};line-height:1.0;
                     font-family:'Inter','Segoe UI',sans-serif">
             {value:,}
         </div>
@@ -591,11 +602,11 @@ def _kpi_card(label: str, value: int, color: str, icon: str = "", sub: str = "")
 def _opens_clicks_card(opened: int, clicked: int) -> str:
     return f"""
     <div style="background:#ffffff;border-radius:14px;padding:18px 16px 16px;
-                box-shadow:0 2px 16px rgba(13,42,94,0.09);text-align:center;
-                border-top:4px solid {_CYAN};min-height:118px;
+                box-shadow:0 2px 16px rgba(0,0,0,0.07);text-align:center;
+                border-top:4px solid {CYAN};min-height:118px;
                 position:relative;overflow:hidden">
         <div style="position:absolute;top:0;left:0;right:0;bottom:0;
-                    background:linear-gradient(135deg,{_CYAN}08 0%,transparent 60%);
+                    background:linear-gradient(135deg,{CYAN}10 0%,transparent 55%);
                     pointer-events:none"></div>
         <div style="font-size:1.4rem;margin-bottom:6px;opacity:0.85">📖</div>
         <div style="font-size:10.5px;color:{_SLATE};font-weight:700;
@@ -608,7 +619,7 @@ def _opens_clicks_card(opened: int, clicked: int) -> str:
                             text-transform:uppercase;letter-spacing:0.7px;margin-bottom:4px">
                     Opened
                 </div>
-                <div style="font-size:28px;font-weight:800;color:{_CYAN};line-height:1">
+                <div style="font-size:28px;font-weight:800;color:{NAVY};line-height:1">
                     {opened:,}
                 </div>
             </div>
@@ -618,7 +629,7 @@ def _opens_clicks_card(opened: int, clicked: int) -> str:
                             text-transform:uppercase;letter-spacing:0.7px;margin-bottom:4px">
                     Clicked
                 </div>
-                <div style="font-size:28px;font-weight:800;color:{_PURPLE};line-height:1">
+                <div style="font-size:28px;font-weight:800;color:{NAVY};line-height:1">
                     {clicked:,}
                 </div>
             </div>
@@ -629,18 +640,18 @@ def _opens_clicks_card(opened: int, clicked: int) -> str:
 def _unsubscribe_card(unsubscribed: int) -> str:
     return f"""
     <div style="background:#ffffff;border-radius:14px;padding:20px 16px 16px;
-                box-shadow:0 2px 16px rgba(13,42,94,0.09);text-align:center;
+                box-shadow:0 2px 16px rgba(0,0,0,0.07);text-align:center;
                 border-top:4px solid {_AMBER};min-height:118px;
                 position:relative;overflow:hidden">
         <div style="position:absolute;top:0;left:0;right:0;bottom:0;
-                    background:linear-gradient(135deg,{_AMBER}08 0%,transparent 60%);
+                    background:linear-gradient(135deg,{_AMBER}10 0%,transparent 55%);
                     pointer-events:none"></div>
         <div style="font-size:1.6rem;margin-bottom:6px;opacity:0.85">🚫</div>
         <div style="font-size:10.5px;color:{_SLATE};font-weight:700;
                     text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">
             Unsubscribed
         </div>
-        <div style="font-size:38px;font-weight:800;color:{_AMBER};line-height:1.0;
+        <div style="font-size:38px;font-weight:800;color:{NAVY};line-height:1.0;
                     font-family:'Inter','Segoe UI',sans-serif">
             {unsubscribed:,}
         </div>
@@ -651,10 +662,10 @@ def _section_hdr(title: str, icon: str = "") -> str:
     icon_part = f'<span style="margin-right:8px;font-size:1rem">{icon}</span>' if icon else ""
     return f"""
     <div style="display:flex;align-items:center;
-                border-left:4px solid {_BLUE};padding-left:12px;
+                border-left:4px solid {CYAN};padding-left:12px;
                 margin:20px 0 12px 0">
         <div>
-            {icon_part}<span style="font-size:11px;font-weight:700;color:{_NAVY};
+            {icon_part}<span style="font-size:11px;font-weight:700;color:{TEXT_PRIMARY};
             text-transform:uppercase;letter-spacing:1px">{title}</span>
         </div>
     </div>"""
@@ -680,29 +691,25 @@ def render_analytics_dashboard() -> None:
 
     # ══ LEFT: filter panel ════════════════════════════════════════════════
     with left:
-        # Filter panel — logo + brand card
+        # Filter panel — light card + logo
+        _fc1, _fc2 = st.columns([0.85, 2.15])
+        with _fc1:
+            st.image("FIPSAR_LOGO.png", use_container_width=True)
+        with _fc2:
+            st.markdown(
+                f"""<div style="padding-top:4px">
+                <div style="font-size:0.95rem;font-weight:800;color:{TEXT_PRIMARY};letter-spacing:0.2px">FIPSAR</div>
+                <div style="height:2px;background:{GRADIENT};border-radius:1px;margin:6px 0;max-width:72px"></div>
+                <div style="font-size:0.65rem;color:{TEXT_SECONDARY};letter-spacing:0.2px">SFMC prospect observability</div>
+                </div>""",
+                unsafe_allow_html=True,
+            )
         st.markdown(
-            f"""<div style="background:linear-gradient(160deg,{_NAVY} 0%,{_BLUE} 100%);
-            border-radius:14px;padding:20px 18px 18px;
-            box-shadow:0 4px 20px rgba(13,42,94,0.22);margin-bottom:16px">
-            <div style="display:flex;align-items:center;gap:11px;margin-bottom:14px">
-                <img src="app/static/FIPSAR_LOGO.png"
-                     onerror="this.style.display='none'"
-                     style="width:38px;height:38px;object-fit:contain;border-radius:8px;
-                            background:rgba(255,255,255,0.12);padding:4px;flex-shrink:0" />
-                <div>
-                    <div style="font-size:0.92rem;font-weight:800;color:#ffffff;
-                                letter-spacing:0.3px;line-height:1.2">FIPSAR</div>
-                    <div style="font-size:0.65rem;color:#a0c4ff;margin-top:1px;
-                                letter-spacing:0.2px">Marketing Leads Observability</div>
-                </div>
-            </div>
-            <div style="height:1px;background:rgba(255,255,255,0.16);margin-bottom:14px"></div>
-            <div style="font-size:9px;font-weight:700;color:#a0c4ff;
-                        text-transform:uppercase;letter-spacing:1.4px">
-                &#9639; Filters
-            </div>
-            </div>""",
+            f"""<div style="background:{PAGE_BG};border:1px solid #e2e8f0;border-radius:12px;
+            padding:12px 14px;margin-bottom:14px;box-shadow:0 1px 8px rgba(0,0,0,0.05)">
+            <div style="font-size:9px;font-weight:700;color:{NAVY};text-transform:uppercase;letter-spacing:1.3px">
+                Filters
+            </div></div>""",
             unsafe_allow_html=True,
         )
 
@@ -760,41 +767,25 @@ def render_analytics_dashboard() -> None:
 
         # Page header
         jcode = _journey_code(journey)
-        st.markdown(
-            f"""<div style="background:linear-gradient(135deg,#0d2a5e 0%,#1a4a9e 100%);
-            border-radius:16px;padding:20px 28px;margin-bottom:18px;
-            box-shadow:0 4px 20px rgba(13,42,94,0.20)">
-            <div style="display:flex;align-items:center;justify-content:space-between">
-                <div>
-                    <div style="font-size:1.2rem;font-weight:800;color:#ffffff;letter-spacing:0.3px">
-                        Analytics Dashboard
-                    </div>
-                    <div style="font-size:0.78rem;color:#a8c4f0;margin-top:5px;
-                                display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-                        <span style="display:flex;align-items:center;gap:5px">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                                 stroke="#a8c4f0" stroke-width="2" stroke-linecap="round">
-                                <rect x="3" y="4" width="18" height="18" rx="2"/>
-                                <line x1="16" y1="2" x2="16" y2="6"/>
-                                <line x1="8" y1="2" x2="8" y2="6"/>
-                                <line x1="3" y1="10" x2="21" y2="10"/>
-                            </svg>
-                            {start_date.strftime('%b %d, %Y')} — {end_date.strftime('%b %d, %Y')}
-                        </span>
-                        <span style="color:#5c7cb0">·</span>
-                        <span>Channel: <b style="color:#dbeafe">{channel}</b></span>
-                        <span style="color:#5c7cb0">·</span>
-                        <span>Journey: <b style="color:#dbeafe">{"All" if not jcode else jcode}</b></span>
-                    </div>
-                </div>
-                <img src="app/static/FIPSAR_LOGO.png"
-                     onerror="this.style.display='none'"
-                     style="width:44px;height:44px;object-fit:contain;
-                            border-radius:10px;background:rgba(255,255,255,0.12);
-                            padding:5px;opacity:0.9" />
-            </div></div>""",
-            unsafe_allow_html=True,
-        )
+        _h1, _h2 = st.columns([4.2, 0.8])
+        with _h1:
+            st.markdown(
+                f"""<div style="background:{PAGE_BG};border:1px solid #e2e8f0;border-radius:16px;padding:18px 22px;margin-bottom:18px;
+                box-shadow:0 2px 14px rgba(0,0,0,0.06)">
+                <div style="font-size:1.15rem;font-weight:800;color:{TEXT_PRIMARY};letter-spacing:0.3px">Analytics Dashboard</div>
+                <div style="height:2px;background:{GRADIENT};border-radius:1px;margin:10px 0;max-width:200px"></div>
+                <div style="font-size:0.78rem;color:{TEXT_SECONDARY};margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                    <span>{start_date.strftime('%b %d, %Y')} — {end_date.strftime('%b %d, %Y')}</span>
+                    <span>·</span>
+                    <span>Channel: <b style="color:{NAVY}">{channel}</b></span>
+                    <span>·</span>
+                    <span>Journey: <b style="color:{NAVY}">{"All" if not jcode else jcode}</b></span>
+                </div></div>""",
+                unsafe_allow_html=True,
+            )
+        with _h2:
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            st.image("FIPSAR_LOGO.png", use_container_width=True)
 
         # Fetch all data
         with st.spinner("Loading dashboard data from Snowflake…"):
@@ -817,7 +808,7 @@ def render_analytics_dashboard() -> None:
         k1, k2, k3 = st.columns(3, gap="small")
         with k1:
             st.markdown(
-                _kpi_card("Total Leads", funnel["leads"], _BLUE, icon="📥"),
+                _kpi_card("Total Leads", funnel["leads"], CYAN, icon="📥"),
                 unsafe_allow_html=True,
             )
         with k2:

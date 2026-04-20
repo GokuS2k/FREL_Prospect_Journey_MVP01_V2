@@ -63,6 +63,32 @@ def get_lineage() -> list[str]:
     return _SL.get("lineage_summary", {}).get("canonical_flow", [])
 
 
+def sidebar_data_dictionary_md() -> str:
+    """Brief markdown for the Streamlit sidebar (human-readable key tables)."""
+    hot = _SL.get("hot_tables_for_prompt_detail") or []
+    if not hot:
+        return ""
+    lines: list[str] = ["**Key tables**"]
+    pdm = get_physical_tables()
+    for full_name in hot[:10]:
+        found = False
+        for db_info in pdm.get("databases", {}).values():
+            for schema_info in db_info.get("schemas", {}).values():
+                tbls = schema_info.get("tables", {})
+                if full_name in tbls:
+                    info = tbls[full_name]
+                    short = full_name.split(".")[-1]
+                    role = (info.get("business_role") or "").strip()
+                    lines.append(f"- **{short}** — {role}" if role else f"- **{short}**")
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            lines.append(f"- `{full_name}`")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # System-prompt builder
 # ---------------------------------------------------------------------------
@@ -87,6 +113,10 @@ CLOSED-LOOP INTELLIGENCE PATTERN:
 {_SL.get("high_level_goal", {}).get("closed_loop_intelligence_pattern", "")}
 """.strip()
 
+    demo_txt = (_SL.get("demo_context") or {}).get("summary", "").strip()
+    if demo_txt:
+        overview = overview + "\n\nDATA CONTEXT:\n" + demo_txt
+
     # --- Terminology ---
     terms = _SL.get("terminology", {}).get("canonical_terms", {})
     term_lines = []
@@ -99,24 +129,37 @@ CLOSED-LOOP INTELLIGENCE PATTERN:
     naming_rules = _SL.get("naming_conventions", {}).get("business_naming_rules", [])
     naming_section = "NAMING RULES:\n" + "\n".join(f"  - {r}" for r in naming_rules)
 
-    # --- Physical data model (tables) ---
+    # --- Physical data model (tables) — compact index + full detail on hot tables ---
+    compact = bool(_SL.get("prompt_compact_tables", True))
+    hot_set = set(_SL.get("hot_tables_for_prompt_detail") or [])
     pdm = get_physical_tables()
     table_lines = ["PHYSICAL DATA MODEL — DATABASES, SCHEMAS, TABLES:"]
+    if compact:
+        table_lines.append(
+            "  Format: most tables are one line (grain | role). "
+            "HOT tables include key columns — use those for joins and SFMC queries."
+        )
     for db_name, db_info in pdm.get("databases", {}).items():
         table_lines.append(f"\nDATABASE: {db_name} — {db_info.get('description', '')}")
-        for schema_name, schema_info in db_info.get("schemas", {}).items():
+        for _schema_name, schema_info in db_info.get("schemas", {}).items():
             for tbl_name, tbl_info in schema_info.get("tables", {}).items():
-                grain   = tbl_info.get("grain", "")
-                role    = tbl_info.get("business_role", "")
-                label   = tbl_info.get("lifecycle_label", "")
-                cols    = tbl_info.get("key_columns", tbl_info.get("important_columns", []))
+                grain = tbl_info.get("grain", "")
+                role = tbl_info.get("business_role", "")
+                label = tbl_info.get("lifecycle_label", "")
+                cols = tbl_info.get("key_columns", tbl_info.get("important_columns", []))
                 col_str = ", ".join(cols) if cols else "see schema"
-                table_lines.append(
-                    f"  TABLE: {tbl_name}\n"
-                    f"    Grain: {grain} | Role: {role}"
-                    + (f" | Lifecycle: {label}" if label else "")
-                    + f"\n    Key columns: {col_str}"
-                )
+                if compact and tbl_name not in hot_set:
+                    table_lines.append(
+                        f"  - {tbl_name} — {grain} | {role}"
+                        + (f" | Lifecycle: {label}" if label else "")
+                    )
+                else:
+                    table_lines.append(
+                        f"  TABLE: {tbl_name}\n"
+                        f"    Grain: {grain} | Role: {role}"
+                        + (f" | Lifecycle: {label}" if label else "")
+                        + f"\n    Key columns: {col_str}"
+                    )
     table_section = "\n".join(table_lines)
 
     # --- Business rules ---
@@ -212,7 +255,7 @@ CLOSED-LOOP INTELLIGENCE PATTERN:
     sql_instructions = """
 SQL GENERATION INSTRUCTIONS:
   - Always use fully qualified table names: DATABASE.SCHEMA.TABLE
-  - The FIPSAR databases are: FIPSAR_PHI_HUB, FIPSAR_DW, FIPSAR_SFMC_EVENTS, FIPSAR_AUDIT, FIPSAR_AI
+  - The FIPSAR databases are: QA_FIPSAR_PHI_HUB, QA_FIPSAR_DW, QA_FIPSAR_SFMC_EVENTS, QA_FIPSAR_AUDIT, QA_FIPSAR_AI
   - When physical columns say MASTER_PATIENT_ID, interpret as the Master Prospect ID
   - Use VW_MART_JOURNEY_INTELLIGENCE for combined journey + engagement questions
   - Use DQ_REJECTION_LOG for funnel drop, rejection, and suppression questions
@@ -263,11 +306,11 @@ SFMC QUERY RULES — CRITICAL (violation causes all SFMC queries to return 0 row
      - NEVER join to DIM_DATE via DATE_KEY for date filtering — the DATE_KEY surrogate key
        join is unreliable and consistently returns ZERO rows. This is a known data platform issue.
      - Correct pattern:
-         FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
-         LEFT JOIN FIPSAR_DW.GOLD.DIM_SFMC_JOB j ON fe.JOB_KEY = j.JOB_KEY
+         FROM QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
+         LEFT JOIN QA_FIPSAR_DW.GOLD.DIM_SFMC_JOB j ON fe.JOB_KEY = j.JOB_KEY
          WHERE DATE(fe.EVENT_TIMESTAMP) BETWEEN '2026-01-01' AND '2026-12-31'
      - Wrong pattern (causes 0 rows — NEVER USE):
-         JOIN FIPSAR_DW.GOLD.DIM_DATE d ON fe.DATE_KEY = d.DATE_KEY
+         JOIN QA_FIPSAR_DW.GOLD.DIM_DATE d ON fe.DATE_KEY = d.DATE_KEY
          WHERE d.FULL_DATE BETWEEN ...
 
   2. WHEN get_sfmc_engagement_stats RETURNS EMPTY / NO DATA:
@@ -276,17 +319,17 @@ SFMC QUERY RULES — CRITICAL (violation causes all SFMC queries to return 0 row
 
      WITH events AS (
          SELECT 'SENT' AS event_type, SUBSCRIBER_KEY, JOB_ID
-           FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_SENT
+           FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_SENT
          UNION ALL
-         SELECT 'OPEN',        SUBSCRIBER_KEY, JOB_ID FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_OPENS
+         SELECT 'OPEN',        SUBSCRIBER_KEY, JOB_ID FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_OPENS
          UNION ALL
-         SELECT 'CLICK',       SUBSCRIBER_KEY, JOB_ID FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_CLICKS
+         SELECT 'CLICK',       SUBSCRIBER_KEY, JOB_ID FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_CLICKS
          UNION ALL
-         SELECT 'BOUNCE',      SUBSCRIBER_KEY, JOB_ID FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_BOUNCES
+         SELECT 'BOUNCE',      SUBSCRIBER_KEY, JOB_ID FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_BOUNCES
          UNION ALL
-         SELECT 'UNSUBSCRIBE', SUBSCRIBER_KEY, JOB_ID FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_UNSUBSCRIBES
+         SELECT 'UNSUBSCRIBE', SUBSCRIBER_KEY, JOB_ID FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_UNSUBSCRIBES
          UNION ALL
-         SELECT 'SPAM',        SUBSCRIBER_KEY, JOB_ID FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_SPAM
+         SELECT 'SPAM',        SUBSCRIBER_KEY, JOB_ID FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_SPAM
      )
      SELECT e.event_type,
             COALESCE(j.JOURNEY_TYPE, 'Unknown') AS journey,
@@ -294,7 +337,7 @@ SFMC QUERY RULES — CRITICAL (violation causes all SFMC queries to return 0 row
             COUNT(*) AS event_count,
             COUNT(DISTINCT e.SUBSCRIBER_KEY) AS unique_subscribers
      FROM events e
-     LEFT JOIN FIPSAR_DW.GOLD.DIM_SFMC_JOB j ON e.JOB_ID = j.JOB_ID
+     LEFT JOIN QA_FIPSAR_DW.GOLD.DIM_SFMC_JOB j ON e.JOB_ID = j.JOB_ID
      GROUP BY 1, 2, 3
      ORDER BY 1, 2, 3
 
@@ -494,123 +537,53 @@ CHARTING RULES — when to generate charts and which tool to use:
   More visuals = richer, more useful answer.
 """.strip()
 
-    # --- Output formatting rules ---
+    # --- Output formatting rules (tiered — dense, no redundant sections) ---
     formatting_rules = """
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-RESPONSE CONTRACT — USE THIS SHAPE FOR EVERY FINAL ANSWER
+RESPONSE CONTRACT — TIERED, ALWAYS GROUNDED IN TOOLS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Every final response must be comprehensive, clean, and business-ready.
-Do NOT use the old TL;DR / Dig Deeper footer format.
-Use the following markdown section order unless a section is genuinely not available:
+ALWAYS include these sections in order:
 
-## Question
-Restate the user's question in one short line.
+## Answer
+2–4 sentences: lead with the conclusion, then the key numbers or pattern. No filler.
 
-## Quick Explanation
-Give a 2-4 sentence executive explanation of the answer. Lead with the conclusion,
-then explain what changed, where it changed, and why it matters.
-
-## Data
-Present the core evidence as a markdown table whenever the answer is quantitative.
-Prefer compact tables with business-friendly columns such as Date, Channel, Leads,
-Prospects, Conversion Rate, Suppressed, Drop-off, Journey, Stage, or Rejection Reason.
-If the answer is not tabular, use 3-6 bullets instead.
+## Evidence
+For quantitative answers: a compact markdown table (business-friendly column names) OR 3–6 tight bullets
+with metrics. For non-numeric answers: structured bullets only.
 
 ## Chart
-Add a short description of the chart that was generated and what it shows.
-Always call a chart tool for quantitative answers. The text in this section should
-name the chart type and the business takeaway, for example:
-"Funnel chart showing lead-to-prospect conversion by channel; Instagram has the largest loss."
+One or two sentences: name the chart type and the single main takeaway (what to look at).
 
-## Summary
-Provide 3-5 bullets with concise, plain-English business takeaways.
+WHEN the question is diagnostic, multi-metric, executive, or explicitly asks for depth — also add:
 
 ## Insights
-Provide 2-4 bullets with sharper diagnostic findings, anomalies, comparisons, or root causes.
-Each insight should be data-backed and specific.
+2–4 bullets: anomalies, comparisons, or likely drivers (label inference as "likely" when not proven).
 
-## Recommendations
-Provide 2-4 action-oriented bullets. Recommendations must be practical and tied directly
-to the evidence in the data.
+## Follow-ups
+Exactly 2 specific follow-up questions as markdown bullets ONLY, one per line, using "- " at the start of each line.
+Example:
+## Follow-ups
+- What were the top rejection reasons in the same period?
+- How does SFMC sent volume compare by journey?
 
-## Follow-up Questions
-Provide exactly 3 bullets. These must be specific next-step questions based on the answer,
-not generic prompts.
+Do not add a "## Recommendations" section — the UI does not show it.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-DEPTH AND LENGTH RULES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  ✦ Target roughly 500-1000 tokens for most analytical answers.
-  ✦ For simple single-metric lookups, stay shorter but keep the same section order where practical.
-  ✦ For comprehensive questions, use richer explanation and 4-6 rows of representative data,
-    but do not become bloated or repetitive.
-  ✦ Avoid one-line shallow answers. The output should feel complete, analytical, and polished.
+Do NOT restate the user's question in a separate "## Question" section unless the ask is ambiguous.
+Do not duplicate the same point in "Answer" and "Insights". Merge Summary into Answer/Evidence/Insights as appropriate.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TONE RULES
+DEPTH
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  ✦ Write like a strong business analyst: direct, clear, and insight-led.
-  ✦ Avoid filler phrases such as "Great question", "Certainly", or "Of course".
-  ✦ Never start with "I".
-  ✦ Translate technical language into business meaning wherever possible.
-  ✦ When something is materially good or bad, say so explicitly.
+  ✦ Prefer dense output: default target ~300–700 tokens; extend only when the question is broad or multi-part.
+  ✦ Simple lookups: keep Answer + Evidence + Chart minimal; skip Insights/Follow-ups unless useful.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-NUMBER AND TABLE RULES
+TONE AND QUALITY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  ✦ Always format large numbers with commas: 1,234 not 1234.
-  ✦ Always show percentages with 1 decimal place: 94.3% not 94%.
-  ✦ Use business labels, not raw physical column names.
-  ✦ If comparing two steps, show both numerator and denominator when available.
-  ✦ If the user asks "why", the table should support the explanation rather than dump raw rows.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ANALYTICAL QUALITY RULES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  ✦ Never state a number unless it came from a tool call.
-  ✦ If a follow-up changes the date range, stage, channel, or journey, re-query the data.
-  ✦ Separate observed facts from inferred root causes. If you infer a likely cause, say it is likely.
-  ✦ For quantitative answers, pair narrative + data table + chart. Do not rely on only one of these.
-  ✦ Recommendations must be grounded in the observed issue, not generic best practices.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-FORMAT EXAMPLE TO IMITATE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Question
-How are leads converting into prospects?
-
-Quick Explanation
-Lead-to-prospect conversion is stable overall, but channel performance is uneven. Campaign App
-is the most consistent source, while Instagram is under pressure from higher suppression and
-drop-off, which is pulling the overall rate down.
-
-Data
-| Date | Channel | Leads | Prospects | Conversion Rate | Suppressed | Drop-off |
-| --- | --- | ---: | ---: | ---: | ---: | ---: |
-| 2026-04-11 | Instagram | 140 | 70 | 50.0% | 20 | 50 |
-| 2026-04-11 | Campaign App | 110 | 77 | 70.0% | 10 | 23 |
-
-Chart
-Funnel chart showing leads-to-prospects conversion by channel, with the sharpest loss on Instagram.
-
-Summary
-- Conversion is broadly stable but channel quality is uneven.
-- Instagram is the main drag on yesterday's performance.
-- Campaign App is the most reliable channel in the current mix.
-
-Insights
-- Suppression on Instagram is materially higher than the other channels.
-- Google Ads may be driving scale, but efficiency is weaker than Campaign App.
-
-Recommendations
-- Audit suppression rules and consent handling for Instagram traffic.
-- Tighten lead validation before records enter the mastering flow.
-
-Follow-up Questions
-- What are the top suppression reasons by channel?
-- Which funnel stage has the highest drop-off over the last 7 days?
-- How does expected vs actual SFMC send volume compare?
+  ✦ Direct, insight-led business analyst tone. No "Great question". Never start with "I".
+  ✦ Numbers: comma-separated thousands; percentages one decimal (94.3%).
+  ✦ Never state a metric without a tool call in this turn. Re-query if filters change.
 """.strip()
 
     # --- Compose final prompt ---

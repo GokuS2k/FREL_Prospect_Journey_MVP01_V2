@@ -24,6 +24,20 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import chart_store
+from fipsar_theme import (
+    ACCENT_PURPLE,
+    CYAN,
+    INFO,
+    NAVY,
+    PLOT_BG,
+    PLOT_GRID,
+    PLOT_MUTED,
+    PLOT_PAPER,
+    PLOT_TEXT,
+    SUCCESS,
+    WARNING,
+    DANGER,
+)
 from snowflake_connector import execute_query
 
 logger = logging.getLogger(__name__)
@@ -46,25 +60,24 @@ def _date_between(col: str, start: str, end: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Colour palette
+# Colour palette — light FIPSAR theme (aligned with Streamlit + logo)
 # ---------------------------------------------------------------------------
 
 _P = {
-    "primary":    "#1F6FEB",
-    "success":    "#1A7F37",
-    "warning":    "#E36209",
-    "danger":     "#CF222E",
-    "neutral":    "#6E7781",
-    "purple":     "#8250DF",
-    "teal":       "#0969DA",
-    "bg":         "#0D1117",
-    "surface":    "#161B22",
-    "text":       "#E6EDF3",
-    "grid":       "#30363D",
+    "primary":    CYAN,
+    "success":    SUCCESS,
+    "warning":    WARNING,
+    "danger":     DANGER,
+    "neutral":    PLOT_MUTED,
+    "purple":     ACCENT_PURPLE,
+    "teal":       INFO,
+    "bg":         PLOT_BG,
+    "surface":    PLOT_PAPER,
+    "text":       PLOT_TEXT,
+    "grid":       PLOT_GRID,
 }
 
-_SEQ = [_P["primary"], _P["success"], _P["warning"], _P["danger"],
-        _P["purple"], _P["teal"], "#F78166", "#56D364", "#79C0FF", "#D2A8FF"]
+_SEQ = [CYAN, NAVY, SUCCESS, WARNING, DANGER, INFO, ACCENT_PURPLE, "#38BDF8", "#0EA5E9", "#6366F1"]
 
 _SEGMENT_C = {
     "High Engagement — Conversion Candidate":    _P["success"],
@@ -104,8 +117,18 @@ def _layout(title: str, height: int = 420, **extra) -> dict:
         height=height,
         margin=dict(l=50, r=30, t=65, b=45),
         legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=_P["grid"], borderwidth=1),
-        xaxis=dict(gridcolor=_P["grid"], zerolinecolor=_P["grid"]),
-        yaxis=dict(gridcolor=_P["grid"], zerolinecolor=_P["grid"]),
+        xaxis=dict(
+            gridcolor=_P["grid"],
+            zerolinecolor=_P["grid"],
+            showgrid=True,
+            zeroline=False,
+        ),
+        yaxis=dict(
+            gridcolor=_P["grid"],
+            zerolinecolor=_P["grid"],
+            showgrid=True,
+            zeroline=False,
+        ),
     )
     base.update(extra)
     return base
@@ -236,7 +259,7 @@ def smart_chart(
             colours = [_SEQ[i % len(_SEQ)] for i in range(len(df))]
             fig.add_trace(go.Pie(
                 labels=df[x_col], values=df[y_col], hole=hole,
-                marker=dict(colors=colours, line=dict(color=_P["bg"], width=2)),
+                marker=dict(colors=colours, line=dict(color="#ffffff", width=2)),
                 textinfo="label+percent+value",
             ))
             fig.update_layout(showlegend=True)
@@ -280,25 +303,25 @@ def funnel_chart(start_date: str = "2020-01-01", end_date: str = "2099-12-31") -
     try:
         sql = f"""
             SELECT 'F01 Lead Intake' AS stage, COUNT(*) AS cnt
-            FROM FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE
+            FROM QA_FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE
             WHERE {_date_between('FILE_DATE', start_date, end_date)}
             UNION ALL
             SELECT 'F02 Valid Prospects', COUNT(*)
-            FROM FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
+            FROM QA_FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
             WHERE {_date_between('FILE_DATE', start_date, end_date)}
             UNION ALL
             SELECT 'F04 SFMC Sent', COUNT(*)
-            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
+            FROM QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
             WHERE EVENT_TYPE = 'SENT'
               AND {_date_between('EVENT_TIMESTAMP', start_date, end_date)}
             UNION ALL
             SELECT 'F06 Opened', COUNT(*)
-            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
+            FROM QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
             WHERE EVENT_TYPE = 'OPEN'
               AND {_date_between('EVENT_TIMESTAMP', start_date, end_date)}
             UNION ALL
             SELECT 'F06 Clicked', COUNT(*)
-            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
+            FROM QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
             WHERE EVENT_TYPE = 'CLICK'
               AND {_date_between('EVENT_TIMESTAMP', start_date, end_date)}
         """
@@ -352,7 +375,7 @@ def rejection_chart(
 
         sql = f"""
             SELECT REJECTION_REASON, COUNT(*) AS cnt
-            FROM FIPSAR_AUDIT.PIPELINE_AUDIT.DQ_REJECTION_LOG
+            FROM QA_FIPSAR_AUDIT.PIPELINE_AUDIT.DQ_REJECTION_LOG
             WHERE (
                 TRY_TO_DATE(TRY_PARSE_JSON(REJECTED_RECORD):FILE_DATE::STRING)
                     BETWEEN '{start_date}' AND '{end_date}'
@@ -371,7 +394,7 @@ def rejection_chart(
         colours = [_REJECTION_C.get(r, _P["neutral"]) for r in df["REJECTION_REASON"]]
         fig = go.Figure(go.Pie(
             labels=df["REJECTION_REASON"], values=df["CNT"], hole=0.45,
-            marker=dict(colors=colours, line=dict(color=_P["bg"], width=2)),
+            marker=dict(colors=colours, line=dict(color="#ffffff", width=2)),
             textinfo="label+percent+value", textfont=dict(size=12),
         ))
         fig.update_layout(**_layout(f"{title_s}  |  {start_date} → {end_date}"))
@@ -400,8 +423,8 @@ def engagement_chart(
 
         sql = f"""
             SELECT j.JOURNEY_TYPE, fe.EVENT_TYPE, COUNT(*) AS cnt
-            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
-            JOIN FIPSAR_DW.GOLD.DIM_SFMC_JOB j ON fe.JOB_KEY = j.JOB_KEY
+            FROM QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
+            JOIN QA_FIPSAR_DW.GOLD.DIM_SFMC_JOB j ON fe.JOB_KEY = j.JOB_KEY
             WHERE {_date_between('fe.EVENT_TIMESTAMP', start_date, end_date)} {jf}
             GROUP BY 1, 2 ORDER BY 1, 2
         """
@@ -411,12 +434,12 @@ def engagement_chart(
             # Fallback: raw SFMC tables
             sql_raw = """
                 SELECT 'SENT' AS event_type, COUNT(*) AS cnt
-                FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_SENT
-                UNION ALL SELECT 'OPEN',        COUNT(*) FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_OPENS
-                UNION ALL SELECT 'CLICK',       COUNT(*) FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_CLICKS
-                UNION ALL SELECT 'BOUNCE',      COUNT(*) FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_BOUNCES
-                UNION ALL SELECT 'UNSUBSCRIBE', COUNT(*) FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_UNSUBSCRIBES
-                UNION ALL SELECT 'SPAM',        COUNT(*) FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_SPAM
+                FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_SENT
+                UNION ALL SELECT 'OPEN',        COUNT(*) FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_OPENS
+                UNION ALL SELECT 'CLICK',       COUNT(*) FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_CLICKS
+                UNION ALL SELECT 'BOUNCE',      COUNT(*) FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_BOUNCES
+                UNION ALL SELECT 'UNSUBSCRIBE', COUNT(*) FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_UNSUBSCRIBES
+                UNION ALL SELECT 'SPAM',        COUNT(*) FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_SPAM
             """
             df_r = _df(sql_raw, max_rows=10)
             if df_r.empty:
@@ -479,10 +502,10 @@ def conversion_segment_chart(
                     COUNT(CASE WHEN fe.EVENT_TYPE='BOUNCE'      THEN 1 END) AS bounces,
                     COUNT(CASE WHEN fe.EVENT_TYPE='UNSUBSCRIBE' THEN 1 END) AS unsubscribes,
                     COUNT(CASE WHEN fe.EVENT_TYPE='SENT'        THEN 1 END) AS sends
-                FROM FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER p
-                JOIN FIPSAR_PHI_HUB.PHI_CORE.PATIENT_IDENTITY_XREF x
+                FROM QA_FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER p
+                JOIN QA_FIPSAR_PHI_HUB.PHI_CORE.PATIENT_IDENTITY_XREF x
                      ON p.MASTER_PATIENT_ID = x.MASTER_PATIENT_ID
-                JOIN FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
+                JOIN QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT fe
                      ON x.IDENTITY_KEY = fe.SUBSCRIBER_KEY
                 WHERE {_date_between('fe.EVENT_TIMESTAMP', start_date, end_date)}
                   AND p.IS_ACTIVE = TRUE
@@ -500,7 +523,7 @@ def conversion_segment_chart(
         sql_act = f"""
             SELECT CASE WHEN IS_ACTIVE THEN 'Active' ELSE 'Inactive / Dropped' END AS status,
                    COUNT(*) AS cnt
-            FROM FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
+            FROM QA_FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
             WHERE {_date_between('FILE_DATE', start_date, end_date)}
             GROUP BY 1
         """
@@ -532,7 +555,7 @@ def conversion_segment_chart(
                            for s in df_seg["SEGMENT"]]
             fig.add_trace(go.Pie(
                 labels=df_seg["SEGMENT"], values=df_seg["CNT"], hole=0.45,
-                marker=dict(colors=seg_colours, line=dict(color=_P["bg"], width=2)),
+                marker=dict(colors=seg_colours, line=dict(color="#ffffff", width=2)),
                 textinfo="percent+value", name="Segments",
             ), row=1, col=1)
 
@@ -541,7 +564,7 @@ def conversion_segment_chart(
                      for s in df_act["STATUS"]]
             fig.add_trace(go.Pie(
                 labels=df_act["STATUS"], values=df_act["CNT"], hole=0.45,
-                marker=dict(colors=act_c, line=dict(color=_P["bg"], width=2)),
+                marker=dict(colors=act_c, line=dict(color="#ffffff", width=2)),
                 textinfo="percent+value", name="Active/Dropped",
             ), row=1, col=2 if has_seg else 1)
 
@@ -577,7 +600,7 @@ def sfmc_stage_fishbone_chart(
         sql = f"""
             WITH base AS (
                 SELECT *
-                FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS jd
+                FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS jd
                 WHERE 1=1 {prospect_filter}
             )
             SELECT * FROM (
@@ -747,13 +770,13 @@ def intake_trend_chart(
         # TRY_TO_DATE wrapping fixes VARCHAR FILE_DATE columns
         sql_l = f"""
             SELECT {_date_trunc(trunc, 'FILE_DATE')} AS period, COUNT(*) AS leads
-            FROM FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE
+            FROM QA_FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE
             WHERE {_date_between('FILE_DATE', start_date, end_date)}
             GROUP BY 1 ORDER BY 1
         """
         sql_p = f"""
             SELECT {_date_trunc(trunc, 'FILE_DATE')} AS period, COUNT(*) AS prospects
-            FROM FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
+            FROM QA_FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
             WHERE {_date_between('FILE_DATE', start_date, end_date)}
             GROUP BY 1 ORDER BY 1
         """
@@ -817,8 +840,8 @@ def bounce_analysis_chart(
                 COALESCE(j.JOURNEY_TYPE, 'Unknown') AS journey,
                 COALESCE(UPPER(b.BOUNCE_CATEGORY), 'UNKNOWN') AS bounce_type,
                 COUNT(*) AS cnt
-            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_BOUNCES b
-            LEFT JOIN FIPSAR_DW.GOLD.DIM_SFMC_JOB j ON b.JOB_ID = j.JOB_ID
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_BOUNCES b
+            LEFT JOIN QA_FIPSAR_DW.GOLD.DIM_SFMC_JOB j ON b.JOB_ID = j.JOB_ID
             WHERE TRY_TO_DATE(SPLIT(b.EVENT_DATE, ' ')[0]::STRING, 'MM/DD/YYYY')
                   BETWEEN '{start_date}' AND '{end_date}'
             GROUP BY 1, 2
@@ -873,7 +896,7 @@ def email_kpi_scorecard_chart(
                 SUM(CASE WHEN EVENT_TYPE = 'BOUNCE'      THEN 1 ELSE 0 END) AS bounces,
                 SUM(CASE WHEN EVENT_TYPE = 'UNSUBSCRIBE' THEN 1 ELSE 0 END) AS unsubscribes,
                 SUM(CASE WHEN EVENT_TYPE = 'SPAM'        THEN 1 ELSE 0 END) AS spam
-            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
+            FROM QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
             WHERE DATE(EVENT_TIMESTAMP) BETWEEN '{start_date}' AND '{end_date}'
         """
         df = _df(sql, max_rows=1)
@@ -939,39 +962,39 @@ def journey_stage_progression_chart() -> str:
             SELECT
                 'S1 Welcome Email'        AS stage, 1 AS ord,
                 SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_WELCOMEEMAIL_SENT))          = 'TRUE' THEN 1 ELSE 0 END) AS reached
-            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
             UNION ALL
             SELECT 'S2 Education Email',       2,
                 SUM(CASE WHEN UPPER(TRIM(WELCOMEJOURNEY_EDUCATIONEMAIL_SENT))        = 'TRUE' THEN 1 ELSE 0 END)
-            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
             UNION ALL
             SELECT 'S3 Nurture Edu 1',         3,
                 SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL1_SENT))       = 'TRUE' THEN 1 ELSE 0 END)
-            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
             UNION ALL
             SELECT 'S4 Nurture Edu 2',         4,
                 SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_EDUCATIONEMAIL2_SENT))       = 'TRUE' THEN 1 ELSE 0 END)
-            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
             UNION ALL
             SELECT 'S5 Prospect Story',        5,
                 SUM(CASE WHEN UPPER(TRIM(NURTUREJOURNEY_PROSPECTSTORYEMAIL_SENT))    = 'TRUE' THEN 1 ELSE 0 END)
-            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
             UNION ALL
             SELECT 'S6 Conversion Email',      6,
                 SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_CONVERSIONEMAIL_SENT))       = 'TRUE' THEN 1 ELSE 0 END)
-            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
             UNION ALL
             SELECT 'S7 Reminder Email',        7,
                 SUM(CASE WHEN UPPER(TRIM(HIGHENGAGEMENT_REMINDEREMAIL_SENT))         = 'TRUE' THEN 1 ELSE 0 END)
-            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
             UNION ALL
             SELECT 'S8 Re-engagement Email',   8,
                 SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENT_REENGAGEMENTEMAIL_SENT))      = 'TRUE' THEN 1 ELSE 0 END)
-            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
             UNION ALL
             SELECT 'S9 Final Reminder',        9,
                 SUM(CASE WHEN UPPER(TRIM(LOWENGAGEMENTFINALREMINDEREMAIL_SENT))      = 'TRUE' THEN 1 ELSE 0 END)
-            FROM FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
+            FROM QA_FIPSAR_SFMC_EVENTS.RAW_EVENTS.RAW_SFMC_PROSPECT_JOURNEY_DETAILS
             ORDER BY ord
         """
         df = _df(sql, max_rows=9)
@@ -1027,7 +1050,7 @@ def daily_engagement_trend_chart(
                 DATE(EVENT_TIMESTAMP)   AS event_date,
                 EVENT_TYPE,
                 COUNT(*)                AS cnt
-            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
+            FROM QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
             WHERE DATE(EVENT_TIMESTAMP) BETWEEN '{start_date}' AND '{end_date}'
               AND EVENT_TYPE IN ({placeholders})
             GROUP BY 1, 2
@@ -1084,8 +1107,8 @@ def prospect_channel_mix_chart(
             SELECT
                 COALESCE(c.CHANNEL_NAME, 'Unknown') AS channel,
                 COUNT(DISTINCT fi.PROSPECT_KEY)     AS prospects
-            FROM FIPSAR_DW.GOLD.FACT_PROSPECT_INTAKE fi
-            LEFT JOIN FIPSAR_DW.GOLD.DIM_CHANNEL c ON fi.CHANNEL_KEY = c.CHANNEL_KEY
+            FROM QA_FIPSAR_DW.GOLD.FACT_PROSPECT_INTAKE fi
+            LEFT JOIN QA_FIPSAR_DW.GOLD.DIM_CHANNEL c ON fi.CHANNEL_KEY = c.CHANNEL_KEY
             WHERE fi.FILE_DATE BETWEEN '{start_date}' AND '{end_date}'
             GROUP BY 1
             ORDER BY 2 DESC
@@ -1097,7 +1120,7 @@ def prospect_channel_mix_chart(
                 SELECT
                     COALESCE(LEAD_SOURCE, 'Unknown') AS channel,
                     COUNT(*) AS prospects
-                FROM FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
+                FROM QA_FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
                 WHERE FILE_DATE BETWEEN '{start_date}' AND '{end_date}'
                 GROUP BY 1
                 ORDER BY 2 DESC
@@ -1112,7 +1135,7 @@ def prospect_channel_mix_chart(
             labels=df["CHANNEL"],
             values=df["PROSPECTS"],
             hole=0.48,
-            marker=dict(colors=colours, line=dict(color=_P["bg"], width=2)),
+            marker=dict(colors=colours, line=dict(color="#ffffff", width=2)),
             textinfo="label+percent+value",
             textfont=dict(size=12),
         ))
@@ -1145,25 +1168,25 @@ def funnel_waterfall_chart(
     try:
         sql = f"""
             SELECT 'F01 Lead Intake' AS stage, 1 AS ord, COUNT(*) AS cnt
-            FROM FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE
+            FROM QA_FIPSAR_PHI_HUB.STAGING.STG_PROSPECT_INTAKE
             WHERE {_date_between('FILE_DATE', start_date, end_date)}
             UNION ALL
             SELECT 'F02 Valid Prospects', 2, COUNT(*)
-            FROM FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
+            FROM QA_FIPSAR_PHI_HUB.PHI_CORE.PHI_PROSPECT_MASTER
             WHERE {_date_between('FILE_DATE', start_date, end_date)}
             UNION ALL
             SELECT 'F04 SFMC Sent', 3, COUNT(*)
-            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
+            FROM QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
             WHERE EVENT_TYPE = 'SENT'
               AND {_date_between('EVENT_TIMESTAMP', start_date, end_date)}
             UNION ALL
             SELECT 'F05 Opened', 4, COUNT(*)
-            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
+            FROM QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
             WHERE EVENT_TYPE = 'OPEN'
               AND {_date_between('EVENT_TIMESTAMP', start_date, end_date)}
             UNION ALL
             SELECT 'F06 Clicked', 5, COUNT(*)
-            FROM FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
+            FROM QA_FIPSAR_DW.GOLD.FACT_SFMC_ENGAGEMENT
             WHERE EVENT_TYPE = 'CLICK'
               AND {_date_between('EVENT_TIMESTAMP', start_date, end_date)}
             ORDER BY ord

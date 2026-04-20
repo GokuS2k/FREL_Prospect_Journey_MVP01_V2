@@ -15,6 +15,7 @@ Run with:
 
 from __future__ import annotations
 
+import re
 import uuid
 import logging
 
@@ -37,288 +38,16 @@ from voice_assistant import transcribe_audio, text_to_speech
 from config import email_config
 from email_sender import test_email_connection, send_email
 from analytics_dashboard import render_analytics_dashboard
+from fipsar_theme import CYAN, GRADIENT, NAVY, PAGE_BG, TEXT_PRIMARY, TEXT_SECONDARY, streamlit_global_css
+from semantic_model import sidebar_data_dictionary_md
 
 logging.basicConfig(level=logging.WARNING)
 
 # ===========================================================================
-# GLOBAL CSS — applied once, covers all tabs and sidebar
+# GLOBAL CSS — FIPSAR logo-aligned light theme (see fipsar_theme.py)
 # ===========================================================================
 
-st.markdown("""
-<style>
-/* ═══════════════════════════════════════════════════════════════════════════
-   FIPSAR Intelligence — Tesla-Gemini UI Design System
-   Palette: Navy #0d2a5e · Blue #1a4a9e · Sky #4a90d9 · Green #16a34a
-            Red #dc2626 · Cyan #06b6d4 · Purple #7c3aed · Amber #d97706
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-/* ── Fonts & base ───────────────────────────────────────────────────────── */
-html, body, [class*="css"] {
-    font-family: 'Inter', 'Segoe UI', system-ui, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-}
-.block-container {
-    padding-top: 0.6rem !important;
-    padding-bottom: 2.5rem !important;
-    max-width: 1480px;
-}
-
-/* ── Page background — clean off-white ─────────────────────────────────── */
-[data-testid="stMain"]       { background: #f5f7fc; }
-[data-testid="stMain"] > div { background: #f5f7fc; }
-
-/* ══════════════════════════════════════════════════════════════════════════
-   SIDEBAR — Deep navy gradient, premium feel
-   ══════════════════════════════════════════════════════════════════════════ */
-[data-testid="stSidebar"] {
-    background: linear-gradient(168deg, #070f22 0%, #0d2050 40%, #0f2a6b 70%, #1a3f8f 100%) !important;
-    border-right: none !important;
-    box-shadow: 4px 0 24px rgba(7,15,34,0.35) !important;
-}
-[data-testid="stSidebar"] > div { background: transparent !important; }
-
-[data-testid="stSidebar"] p,
-[data-testid="stSidebar"] span,
-[data-testid="stSidebar"] label,
-[data-testid="stSidebar"] small,
-[data-testid="stSidebar"] li    { color: #b8cef2 !important; }
-
-[data-testid="stSidebar"] h1 {
-    color: #ffffff !important;
-    font-size: 1.1rem !important;
-    font-weight: 800 !important;
-    letter-spacing: 0.4px;
-}
-[data-testid="stSidebar"] h2,
-[data-testid="stSidebar"] h3 {
-    color: #7aa8e0 !important;
-    font-size: 0.68rem !important;
-    font-weight: 700 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 1.4px !important;
-}
-[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
-    color: #6d96cc !important;
-    font-size: 0.71rem !important;
-}
-[data-testid="stSidebar"] hr {
-    border-color: rgba(255,255,255,0.10) !important;
-    margin: 10px 0 !important;
-}
-
-/* Sidebar buttons — ghost style */
-[data-testid="stSidebar"] .stButton > button {
-    background: rgba(255,255,255,0.07) !important;
-    color: #cce0ff !important;
-    border: 1px solid rgba(255,255,255,0.16) !important;
-    border-radius: 8px !important;
-    font-size: 0.74rem !important;
-    font-weight: 600 !important;
-    padding: 6px 10px !important;
-    transition: all 0.18s ease !important;
-    letter-spacing: 0.2px !important;
-}
-[data-testid="stSidebar"] .stButton > button:hover {
-    background: rgba(255,255,255,0.16) !important;
-    border-color: rgba(255,255,255,0.36) !important;
-    color: #ffffff !important;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.20) !important;
-}
-
-/* Sidebar expanders */
-[data-testid="stSidebar"] [data-testid="stExpander"] {
-    background: rgba(255,255,255,0.05) !important;
-    border: 1px solid rgba(255,255,255,0.10) !important;
-    border-radius: 8px !important;
-}
-[data-testid="stSidebar"] [data-testid="stExpander"] summary { color: #b0c8f0 !important; font-size: 0.76rem !important; }
-[data-testid="stSidebar"] [data-testid="stExpander"] .stButton > button {
-    background: rgba(255,255,255,0.05) !important;
-    font-size: 0.72rem !important;
-    text-align: left !important;
-    padding: 5px 8px !important;
-    border-radius: 6px !important;
-    white-space: normal !important;
-    height: auto !important;
-    line-height: 1.35 !important;
-}
-[data-testid="stSidebar"] [data-testid="stExpander"] .stButton > button:hover {
-    background: rgba(255,255,255,0.16) !important;
-}
-[data-testid="stSidebar"] [data-testid="stAlert"] {
-    background: rgba(255,255,255,0.07) !important;
-    border-radius: 8px !important;
-    border-left: 3px solid rgba(255,255,255,0.35) !important;
-}
-[data-testid="stSidebar"] [data-testid="stImage"] {
-    display: flex !important;
-    justify-content: center !important;
-    margin: 10px auto 0 !important;
-}
-[data-testid="stSidebar"] [data-testid="stImage"] img {
-    border-radius: 10px !important;
-    background: rgba(255,255,255,0.08) !important;
-    padding: 6px !important;
-}
-[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] { gap: 0 !important; padding: 0 !important; }
-[data-testid="stSidebar"] .stImage > img { max-width: 80px !important; }
-
-/* ══════════════════════════════════════════════════════════════════════════
-   TAB BAR — Tesla: ultra-clean, purposeful
-   ══════════════════════════════════════════════════════════════════════════ */
-[data-testid="stTabs"] > div:first-child {
-    position: sticky;
-    top: 0;
-    z-index: 999;
-    background: #f5f7fc !important;
-    padding: 10px 0 6px;
-    border-bottom: 1px solid rgba(13,42,94,0.07);
-}
-[data-baseweb="tab-list"] {
-    background: rgba(255,255,255,0.96) !important;
-    border-radius: 14px !important;
-    padding: 5px !important;
-    gap: 3px !important;
-    box-shadow: 0 1px 16px rgba(13,42,94,0.09), 0 0 0 1px rgba(13,42,94,0.06) !important;
-    border: none !important;
-}
-[data-baseweb="tab"] {
-    background: transparent !important;
-    border-radius: 10px !important;
-    padding: 10px 26px !important;
-    font-weight: 600 !important;
-    font-size: 0.85rem !important;
-    color: #64748b !important;
-    border: none !important;
-    transition: all 0.15s ease !important;
-    letter-spacing: 0.1px !important;
-}
-[data-baseweb="tab"]:hover {
-    background: rgba(13,42,94,0.06) !important;
-    color: #0d2a5e !important;
-}
-[aria-selected="true"][data-baseweb="tab"] {
-    background: linear-gradient(135deg, #0d2a5e 0%, #1a4a9e 100%) !important;
-    color: #ffffff !important;
-    box-shadow: 0 3px 12px rgba(13,42,94,0.28) !important;
-    font-weight: 700 !important;
-}
-[data-baseweb="tab-highlight"] { background: transparent !important; height: 0 !important; }
-[data-baseweb="tab-border"]    { display: none !important; }
-
-/* ══════════════════════════════════════════════════════════════════════════
-   CHAT — Gemini-inspired interface
-   ══════════════════════════════════════════════════════════════════════════ */
-
-/* Base message bubble */
-[data-testid="stChatMessage"] {
-    border-radius: 18px !important;
-    margin: 4px 0 10px !important;
-    padding: 2px 10px !important;
-    border: 1px solid #eaeff8 !important;
-    background: #ffffff !important;
-    box-shadow: 0 1px 8px rgba(13,42,94,0.06) !important;
-    transition: box-shadow 0.15s ease !important;
-}
-
-/* USER message — navy gradient pill (Gemini right-hand style) */
-[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]),
-[data-testid="stChatMessage"]:has([aria-label*="user" i]) {
-    background: linear-gradient(135deg, #0d2a5e 0%, #1a4a9e 100%) !important;
-    border-color: transparent !important;
-    box-shadow: 0 2px 16px rgba(13,42,94,0.22) !important;
-}
-[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) p,
-[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) .stMarkdown p,
-[data-testid="stChatMessage"]:has([aria-label*="user" i]) p,
-[data-testid="stChatMessage"]:has([aria-label*="user" i]) .stMarkdown p {
-    color: #e8f0fe !important;
-}
-
-/* ASSISTANT message — white with left accent */
-[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]),
-[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) {
-    background: #ffffff !important;
-    border-left: 3px solid #1a4a9e !important;
-    border-top: 1px solid #eaeff8 !important;
-    border-right: 1px solid #eaeff8 !important;
-    border-bottom: 1px solid #eaeff8 !important;
-}
-
-/* Chat input — Gemini pill style */
-[data-testid="stChatInput"] {
-    border-radius: 28px !important;
-    box-shadow: 0 2px 20px rgba(13,42,94,0.10) !important;
-    border: 2px solid #dde4f0 !important;
-    background: #ffffff !important;
-    transition: all 0.2s ease !important;
-}
-[data-testid="stChatInput"]:focus-within {
-    border-color: #1a4a9e !important;
-    box-shadow: 0 0 0 4px rgba(26,74,158,0.08), 0 2px 20px rgba(13,42,94,0.10) !important;
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   BUTTONS — Tesla minimal: clean, purposeful
-   ══════════════════════════════════════════════════════════════════════════ */
-.stButton > button {
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-    font-size: 0.81rem !important;
-    transition: all 0.15s ease !important;
-    padding: 6px 14px !important;
-    letter-spacing: 0.15px !important;
-}
-.stButton > button:hover {
-    transform: translateY(-1px) !important;
-    box-shadow: 0 4px 12px rgba(13,42,94,0.14) !important;
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   CHARTS — clean floating cards
-   ══════════════════════════════════════════════════════════════════════════ */
-[data-testid="stPlotlyChart"] {
-    background: #ffffff !important;
-    border-radius: 16px !important;
-    box-shadow: 0 1px 16px rgba(13,42,94,0.07) !important;
-    border: 1px solid #eaeff8 !important;
-    padding: 4px !important;
-}
-
-/* ── Expanders ──────────────────────────────────────────────────────────── */
-[data-testid="stExpander"] {
-    border-radius: 12px !important;
-    border: 1px solid #e8edf5 !important;
-    background: #ffffff !important;
-    box-shadow: 0 1px 6px rgba(13,42,94,0.04) !important;
-}
-
-/* ── Alerts ─────────────────────────────────────────────────────────────── */
-[data-testid="stAlert"] { border-radius: 10px !important; }
-
-/* ── Inputs & Selects ───────────────────────────────────────────────────── */
-[data-testid="stSelectbox"] > div > div,
-[data-testid="stDateInput"] > div > div {
-    border-radius: 8px !important;
-    border-color: #dde4f0 !important;
-}
-
-/* ── Custom scrollbar ───────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 8px; }
-::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: #64748b; }
-
-/* ── Spinner ────────────────────────────────────────────────────────────── */
-[data-testid="stSpinner"] > div { color: #1a4a9e !important; }
-
-/* ── Dividers ───────────────────────────────────────────────────────────── */
-[data-testid="stHorizontalBlock"] hr {
-    border-color: #e8edf5 !important;
-    margin: 6px 0 !important;
-}
-</style>
-""", unsafe_allow_html=True)
+st.markdown(streamlit_global_css(), unsafe_allow_html=True)
 
 
 # ===========================================================================
@@ -332,20 +61,19 @@ def _render_email_badge(meta: dict) -> None:
         if meta.get("charts_attached", 0) > 0 else ""
     )
     st.markdown(
-        f"""<div style="background:linear-gradient(135deg,#0a2e1a 0%,#16532e 100%);
-        border:1px solid #22c55e;border-radius:12px;padding:16px 20px;margin-top:12px;
-        box-shadow:0 4px 16px rgba(22,101,52,0.25)">
+        f"""<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:16px 20px;margin-top:12px;
+        box-shadow:0 2px 12px rgba(5,150,105,0.12)">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
             <span style="font-size:1.1rem">✅</span>
-            <span style="color:#4ade80;font-size:0.82rem;font-weight:700;
+            <span style="color:#166534;font-size:0.82rem;font-weight:700;
                          text-transform:uppercase;letter-spacing:0.8px">
                 Email Sent Successfully
             </span>
         </div>
-        <div style="color:#bbf7d0;font-size:0.88rem;line-height:1.7">
-            <b style="color:#86efac">To:</b> {meta.get("to", "")}<br>
-            <b style="color:#86efac">Subject:</b> {meta.get("subject", "FIPSAR Report")}<br>
-            <b style="color:#86efac">Sent at:</b> {meta.get("sent_at", "")}{charts_note}
+        <div style="color:#14532d;font-size:0.88rem;line-height:1.7">
+            <b>To:</b> {meta.get("to", "")}<br>
+            <b>Subject:</b> {meta.get("subject", "FIPSAR Report")}<br>
+            <b>Sent at:</b> {meta.get("sent_at", "")}{charts_note}
         </div></div>""",
         unsafe_allow_html=True,
     )
@@ -375,6 +103,34 @@ def _scroll_to_bottom() -> None:
     components.html(_SCROLL_JS, height=0, scrolling=False)
 
 
+def _split_followups_from_assistant(text: str) -> tuple[str, list[str]]:
+    """
+    Strip the ## Follow-ups section from assistant markdown for display; return follow-up
+    strings as separate items for clickable buttons.
+    """
+    if not text or not text.strip():
+        return "", []
+    pat = re.compile(
+        r"\n{0,2}##\s*Follow-?ups(?:\s+questions)?\s*\n(?P<block>[\s\S]*)$",
+        re.IGNORECASE,
+    )
+    m = pat.search(text)
+    if not m:
+        return text, []
+    main = text[: m.start()].rstrip()
+    block = m.group("block") or ""
+    questions: list[str] = []
+    for raw in block.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith(("- ", "* ", "– ")):
+            questions.append(line[2:].strip())
+        elif re.match(r"^\d+\.\s+", line):
+            questions.append(re.sub(r"^\d+\.\s+", "", line).strip())
+    return main, [q for q in questions if q]
+
+
 # ---------------------------------------------------------------------------
 # Session state initialisation
 # ---------------------------------------------------------------------------
@@ -383,6 +139,8 @@ if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "chat_followup_pending" not in st.session_state:
+    st.session_state.chat_followup_pending = None
 if "snowflake_ok" not in st.session_state:
     st.session_state.snowflake_ok = None
 
@@ -412,13 +170,14 @@ with st.sidebar:
     _logo_col1, _logo_col2, _logo_col3 = st.columns([0.4, 2.2, 0.4])
     with _logo_col2:
         st.image("FIPSAR_LOGO.png", use_container_width=True)
-    st.markdown("""
-    <div style="text-align:center;padding:6px 0 16px">
-        <div style="font-size:1.1rem;font-weight:800;color:#ffffff;letter-spacing:0.4px">
+    st.markdown(f"""
+    <div style="text-align:center;padding:6px 0 14px">
+        <div style="font-size:1.1rem;font-weight:800;color:{TEXT_PRIMARY};letter-spacing:0.4px">
             FIPSAR Intelligence
         </div>
-        <div style="font-size:0.71rem;color:#7fa8d8;margin-top:3px;letter-spacing:0.3px">
-            Prospect Journey AI · LangGraph + Snowflake
+        <div style="height:3px;background:{GRADIENT};border-radius:2px;margin:10px auto 0;max-width:140px"></div>
+        <div style="font-size:0.71rem;color:{TEXT_SECONDARY};margin-top:10px;letter-spacing:0.3px">
+            SFMC Prospect Journey · LangGraph + Snowflake
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -426,7 +185,7 @@ with st.sidebar:
     st.divider()
 
     # ── Snowflake connection ──────────────────────────────────────────────
-    st.markdown("""<div style="font-size:0.72rem;font-weight:700;color:#8fb4e8;
+    st.markdown(f"""<div style="font-size:0.72rem;font-weight:700;color:{NAVY};
         text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px">
         🔌 Connection Status</div>""", unsafe_allow_html=True)
 
@@ -445,20 +204,20 @@ with st.sidebar:
             display:flex;align-items:center;gap:6px;margin-top:4px">
             <span>●</span> Connection Failed</div>""", unsafe_allow_html=True)
     else:
-        st.markdown("""<div style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);
-            border-radius:8px;padding:7px 12px;font-size:0.77rem;color:#93b8e0;margin-top:4px">
+        st.markdown("""<div style="background:#f1f5f9;border:1px solid #e2e8f0;
+            border-radius:8px;padding:7px 12px;font-size:0.77rem;color:#64748b;margin-top:4px">
             Click above to test connection</div>""", unsafe_allow_html=True)
 
     st.divider()
 
     # ── Email status ──────────────────────────────────────────────────────
-    st.markdown("""<div style="font-size:0.72rem;font-weight:700;color:#8fb4e8;
+    st.markdown(f"""<div style="font-size:0.72rem;font-weight:700;color:{NAVY};
         text-transform:uppercase;letter-spacing:1.2px;margin-bottom:6px">
         📧 Email (FREL Agent)</div>""", unsafe_allow_html=True)
 
     st.markdown(
-        f"""<div style="font-size:0.73rem;color:#93b8e0;margin-bottom:8px">
-        Recipient: <span style="color:#c0d4f0;font-family:monospace">{email_config.to_address}</span>
+        f"""<div style="font-size:0.73rem;color:{TEXT_SECONDARY};margin-bottom:8px">
+        Recipient: <span style="color:{TEXT_PRIMARY};font-family:monospace">{email_config.to_address}</span>
         </div>""",
         unsafe_allow_html=True,
     )
@@ -509,17 +268,17 @@ with st.sidebar:
     st.divider()
 
     # ── Sessions ──────────────────────────────────────────────────────────
-    st.markdown("""<div style="font-size:0.72rem;font-weight:700;color:#8fb4e8;
+    st.markdown(f"""<div style="font-size:0.72rem;font-weight:700;color:{NAVY};
         text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px">
         🔄 Sessions</div>""", unsafe_allow_html=True)
 
     st.markdown(
-        f"""<div style="font-size:0.71rem;color:#7fa8d8;line-height:1.9;margin-bottom:8px">
-        💬 Chat: <code style="color:#a8c8f0;background:rgba(255,255,255,0.08);
+        f"""<div style="font-size:0.71rem;color:{TEXT_SECONDARY};line-height:1.9;margin-bottom:8px">
+        💬 Chat: <code style="color:{NAVY};background:#e0f2fe;
         padding:1px 5px;border-radius:4px">{st.session_state.session_id[:8]}…</code><br>
-        🎤 Voice: <code style="color:#a8c8f0;background:rgba(255,255,255,0.08);
+        🎤 Voice: <code style="color:{NAVY};background:#e0f2fe;
         padding:1px 5px;border-radius:4px">{st.session_state.voice_session_id[:8]}…</code><br>
-        📧 FREL: <code style="color:#a8c8f0;background:rgba(255,255,255,0.08);
+        📧 FREL: <code style="color:{NAVY};background:#e0f2fe;
         padding:1px 5px;border-radius:4px">{st.session_state.frel_session_id[:8]}…</code>
         </div>""",
         unsafe_allow_html=True,
@@ -531,6 +290,7 @@ with st.sidebar:
             for key in ["session_id", "voice_session_id", "frel_session_id"]:
                 st.session_state[key] = str(uuid.uuid4())
             st.session_state.messages = []
+            st.session_state.chat_followup_pending = None
             st.session_state.voice_messages = []
             st.session_state.frel_messages = []
             st.session_state.last_audio_key = None
@@ -540,6 +300,7 @@ with st.sidebar:
             reset_session(st.session_state.session_id)
             reset_frel_session(st.session_state.frel_session_id)
             st.session_state.messages = []
+            st.session_state.chat_followup_pending = None
             st.session_state.voice_messages = []
             st.session_state.frel_messages = []
             st.session_state.last_audio_key = None
@@ -547,8 +308,13 @@ with st.sidebar:
 
     st.divider()
 
+    _dd = sidebar_data_dictionary_md()
+    if _dd:
+        with st.expander("📖 Data dictionary (key tables)", expanded=False):
+            st.markdown(_dd)
+
     # ── Sample questions ──────────────────────────────────────────────────
-    st.markdown("""<div style="font-size:0.72rem;font-weight:700;color:#8fb4e8;
+    st.markdown(f"""<div style="font-size:0.72rem;font-weight:700;color:{NAVY};
         text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px">
         💡 Sample Questions</div>""", unsafe_allow_html=True)
     SAMPLE_QUESTIONS: dict[str, list[str]] = {
@@ -632,37 +398,40 @@ with tab_analytics:
 
 with tab_chat:
 
-    # Gemini-style header — minimal, dark, purposeful
-    st.markdown("""
-    <div style="background:linear-gradient(135deg,#070f22 0%,#0d2a5e 50%,#1a4a9e 100%);
-         border-radius:20px;padding:24px 32px;margin-bottom:18px;
-         box-shadow:0 6px 28px rgba(7,15,34,0.28);
-         display:flex;align-items:center;justify-content:space-between">
+    if st.session_state.chat_followup_pending:
+        _fq = st.session_state.chat_followup_pending
+        st.session_state.chat_followup_pending = None
+        st.session_state.messages.append({"role": "user", "content": _fq})
+        with st.spinner("Querying Snowflake and reasoning…"):
+            chart_store.set_session(st.session_state.session_id)
+            _resp = chat(st.session_state.session_id, _fq)
+        _charts = chart_store.pop_all(st.session_state.session_id)
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": _resp,
+            "charts": _charts,
+        })
+        _scroll_to_bottom()
+        st.rerun()
+
+    st.markdown(f"""
+    <div style="background:{PAGE_BG};border:1px solid #e2e8f0;border-radius:16px;padding:22px 28px;margin-bottom:18px;
+         box-shadow:0 2px 16px rgba(0,0,0,0.06);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div style="display:flex;align-items:center;gap:16px">
-            <div style="width:42px;height:42px;background:rgba(255,255,255,0.10);
-                        border-radius:50%;display:flex;align-items:center;justify-content:center;
-                        font-size:1.3rem;flex-shrink:0">💬</div>
+            <div style="width:44px;height:44px;background:{GRADIENT};border-radius:50%;display:flex;align-items:center;justify-content:center;
+                        font-size:1.25rem;flex-shrink:0;box-shadow:0 2px 10px rgba(0,51,160,0.2)">💬</div>
             <div>
-                <div style="font-size:1.2rem;font-weight:800;color:#ffffff;
-                            letter-spacing:0.2px;line-height:1.2">
+                <div style="font-size:1.15rem;font-weight:800;color:{TEXT_PRIMARY};letter-spacing:0.2px;line-height:1.2">
                     Prospect Journey Intelligence
                 </div>
-                <div style="font-size:0.78rem;color:#7aa8e0;margin-top:5px;
-                            display:flex;gap:16px;flex-wrap:wrap">
-                    <span>Lead Intake</span>
-                    <span style="color:#2a4a7f">·</span>
-                    <span>SFMC Journeys</span>
-                    <span style="color:#2a4a7f">·</span>
-                    <span>Engagement Events</span>
-                    <span style="color:#2a4a7f">·</span>
-                    <span>AI Scores</span>
+                <div style="height:2px;background:{GRADIENT};border-radius:1px;margin-top:8px;max-width:180px"></div>
+                <div style="font-size:0.78rem;color:{TEXT_SECONDARY};margin-top:8px;display:flex;gap:12px;flex-wrap:wrap">
+                    <span>Lead Intake</span><span>·</span><span>SFMC Journeys</span><span>·</span><span>Engagement</span><span>·</span><span>AI Scores</span>
                 </div>
             </div>
         </div>
-        <div style="font-size:0.68rem;color:#3d5f8a;font-weight:600;text-align:right;
-                    letter-spacing:0.5px;text-transform:uppercase">
-            GPT-4o · LangGraph<br>
-            <span style="color:#1a3a6e">Snowflake</span>
+        <div style="font-size:0.68rem;color:{TEXT_SECONDARY};font-weight:600;text-align:right;letter-spacing:0.4px;text-transform:uppercase">
+            GPT-4o · LangGraph<br><span style="color:{NAVY}">Snowflake</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -671,28 +440,43 @@ with tab_chat:
     chat_container = st.container()
     with chat_container:
         if not st.session_state.messages:
-            st.markdown("""
-            <div style="text-align:center;padding:60px 20px 48px;color:#94a3b8">
-                <div style="width:64px;height:64px;margin:0 auto 16px;
-                            background:linear-gradient(135deg,#f0f4ff,#e8eeff);
+            st.markdown(f"""
+            <div style="text-align:center;padding:60px 20px 48px;color:{TEXT_SECONDARY}">
+                <div style="width:64px;height:64px;margin:0 auto 16px;background:{GRADIENT};
                             border-radius:50%;display:flex;align-items:center;
                             justify-content:center;font-size:1.8rem;
-                            box-shadow:0 4px 16px rgba(13,42,94,0.10)">🧠</div>
-                <div style="font-size:1rem;font-weight:700;color:#475569;margin-bottom:8px">
-                    How can I help you today?
+                            box-shadow:0 4px 16px rgba(0,51,160,0.15)">🧠</div>
+                <div style="font-size:1rem;font-weight:700;color:{TEXT_PRIMARY};margin-bottom:8px">
+                    How can we help?
                 </div>
-                <div style="font-size:0.84rem;max-width:400px;margin:0 auto;line-height:1.7;color:#94a3b8">
+                <div style="font-size:0.84rem;max-width:420px;margin:0 auto;line-height:1.7;color:{TEXT_SECONDARY}">
                     Ask about leads, SFMC journeys, engagement metrics, or data quality.<br>
-                    Or pick from <b style="color:#64748b">Sample Questions</b> in the sidebar.
+                    Or use <b style="color:{NAVY}">Sample Questions</b> in the sidebar.
                 </div>
             </div>
             """, unsafe_allow_html=True)
         else:
-            for msg in st.session_state.messages:
+            for _mi, msg in enumerate(st.session_state.messages):
                 with st.chat_message(msg["role"]):
-                    st.markdown(msg["content"])
-                    for fig in msg.get("charts", []):
-                        st.plotly_chart(fig, use_container_width=True)
+                    if msg["role"] == "assistant":
+                        _body, _fus = _split_followups_from_assistant(msg["content"])
+                        st.markdown(_body)
+                        for fig in msg.get("charts", []):
+                            st.plotly_chart(fig, use_container_width=True)
+                        if _fus:
+                            st.caption("Next questions")
+                            for _fj, _q in enumerate(_fus):
+                                _lbl = _q if len(_q) <= 80 else _q[:77] + "…"
+                                if st.button(
+                                    _lbl,
+                                    key=f"chat_fu_{_mi}_{_fj}",
+                                    help=_q,
+                                    use_container_width=True,
+                                ):
+                                    st.session_state.chat_followup_pending = _q
+                                    st.rerun()
+                    else:
+                        st.markdown(msg["content"])
 
     # Sticky chat input
     if user_input := st.chat_input("Ask about your prospect journey data…", key="chat_input"):
@@ -704,10 +488,23 @@ with tab_chat:
                 with st.spinner("Querying Snowflake and reasoning…"):
                     chart_store.set_session(st.session_state.session_id)
                     response = chat(st.session_state.session_id, user_input)
-                st.markdown(response)
                 pending_charts = chart_store.pop_all(st.session_state.session_id)
+                _b_live, _fu_live = _split_followups_from_assistant(response)
+                st.markdown(_b_live)
                 for fig in pending_charts:
                     st.plotly_chart(fig, use_container_width=True)
+                if _fu_live:
+                    st.caption("Next questions")
+                    for _fj, _q in enumerate(_fu_live):
+                        _lbl = _q if len(_q) <= 80 else _q[:77] + "…"
+                        if st.button(
+                            _lbl,
+                            key=f"chat_fu_live_{_fj}",
+                            help=_q,
+                            use_container_width=True,
+                        ):
+                            st.session_state.chat_followup_pending = _q
+                            st.rerun()
 
         st.session_state.messages.append({
             "role": "assistant",
@@ -717,10 +514,9 @@ with tab_chat:
         _scroll_to_bottom()
 
     # Footer
-    st.markdown("""
-    <div style="text-align:center;margin-top:14px;padding-top:10px;
-                border-top:1px solid #eaeff8">
-        <span style="font-size:0.71rem;color:#b0bdd0;letter-spacing:0.3px">
+    st.markdown(f"""
+    <div style="text-align:center;margin-top:14px;padding-top:10px;border-top:1px solid #e2e8f0">
+        <span style="font-size:0.71rem;color:{TEXT_SECONDARY};letter-spacing:0.3px">
             FIPSAR Intelligence &nbsp;·&nbsp; Snowflake &nbsp;·&nbsp; GPT-4o via LangGraph
         </span>
     </div>
@@ -733,19 +529,14 @@ with tab_chat:
 
 with tab_voice:
 
-    # Header
-    st.markdown("""
-    <div style="background:linear-gradient(135deg,#1a1a3e 0%,#2d2d6b 100%);
-         border-radius:16px;padding:20px 26px;margin-bottom:18px;
-         box-shadow:0 4px 18px rgba(26,26,62,0.30)">
+    st.markdown(f"""
+    <div style="background:{PAGE_BG};border:1px solid #e2e8f0;border-radius:16px;padding:20px 26px;margin-bottom:18px;box-shadow:0 2px 12px rgba(0,0,0,0.06)">
         <div style="display:flex;align-items:center;gap:14px">
-            <div style="font-size:2rem">🎤</div>
+            <div style="font-size:2rem;width:48px;height:48px;background:{GRADIENT};border-radius:12px;display:flex;align-items:center;justify-content:center">🎤</div>
             <div>
-                <div style="font-size:1.15rem;font-weight:800;color:#ffffff">
-                    Voice Assistant
-                </div>
-                <div style="font-size:0.8rem;color:#a0a8d8;margin-top:3px">
-                    Speak your question — transcribed by Whisper · answered · read back as audio
+                <div style="font-size:1.1rem;font-weight:800;color:{TEXT_PRIMARY}">Voice Assistant</div>
+                <div style="font-size:0.8rem;color:{TEXT_SECONDARY};margin-top:4px">
+                    Whisper transcription · LangGraph · TTS playback
                 </div>
             </div>
         </div>
@@ -772,26 +563,22 @@ with tab_voice:
             for msg in st.session_state.voice_messages:
                 if msg["role"] == "user":
                     st.markdown(
-                        f"""<div style="background:linear-gradient(135deg,#1e3a5f,#1a2e4a);
-                        border-left:4px solid #60a5fa;border-radius:12px;
-                        padding:12px 16px;margin:8px 0;
-                        box-shadow:0 2px 8px rgba(30,58,95,0.30)">
-                        <div style="color:#93c5fd;font-size:0.72rem;font-weight:700;
+                        f"""<div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid {CYAN};
+                        border-radius:12px;padding:12px 16px;margin:8px 0;box-shadow:0 1px 8px rgba(0,0,0,0.05)">
+                        <div style="color:{NAVY};font-size:0.72rem;font-weight:700;
                              text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">
-                            🎙 You Said
+                            🎙 You said
                         </div>
-                        <div style="color:#dbeafe;font-size:0.92rem;line-height:1.5">
+                        <div style="color:{TEXT_PRIMARY};font-size:0.92rem;line-height:1.5">
                             {msg["content"]}
                         </div></div>""",
                         unsafe_allow_html=True,
                     )
                 else:
                     st.markdown(
-                        """<div style="background:linear-gradient(135deg,#0f2d1f,#14402a);
-                        border-left:4px solid #4ade80;border-radius:12px;
-                        padding:10px 16px 6px;margin:6px 0 2px;
-                        box-shadow:0 2px 8px rgba(15,45,31,0.30)">
-                        <div style="color:#86efac;font-size:0.72rem;font-weight:700;
+                        f"""<div style="background:{GRADIENT};border-radius:12px;
+                        padding:10px 16px 6px;margin:6px 0 2px;box-shadow:0 2px 10px rgba(0,51,160,0.2)">
+                        <div style="color:#ffffff;font-size:0.72rem;font-weight:700;
                              text-transform:uppercase;letter-spacing:0.8px">
                             🤖 FIPSAR AI
                         </div></div>""",
@@ -886,21 +673,15 @@ with tab_frel:
 
     # Header
     st.markdown(
-        f"""<div style="background:linear-gradient(135deg,#1a0a2e 0%,#3d1a6e 100%);
-        border-radius:16px;padding:22px 28px;margin-bottom:18px;
-        box-shadow:0 4px 20px rgba(61,26,110,0.30)">
-        <div style="display:flex;align-items:center;justify-content:space-between">
-            <div style="display:flex;align-items:center;gap:14px">
-                <div style="font-size:2rem">📧</div>
-                <div>
-                    <div style="font-size:1.2rem;font-weight:800;color:#ffffff">
-                        FREL Agent
-                    </div>
-                    <div style="font-size:0.8rem;color:#c4a8f8;margin-top:3px">
-                        Full data intelligence + one-click email delivery ·
-                        Say <b style="color:#e9d5ff">"send it over email"</b>
-                        → report goes to <b style="color:#e9d5ff">{email_config.to_address}</b>
-                    </div>
+        f"""<div style="background:{PAGE_BG};border:1px solid #e2e8f0;border-radius:16px;padding:22px 28px;margin-bottom:18px;
+        box-shadow:0 2px 14px rgba(0,0,0,0.06)">
+        <div style="display:flex;align-items:center;gap:14px">
+            <div style="font-size:1.8rem;width:52px;height:52px;background:{GRADIENT};border-radius:12px;display:flex;align-items:center;justify-content:center">📧</div>
+            <div>
+                <div style="font-size:1.15rem;font-weight:800;color:{TEXT_PRIMARY}">FREL Agent</div>
+                <div style="font-size:0.8rem;color:{TEXT_SECONDARY};margin-top:4px;max-width:640px">
+                    Data intelligence + email delivery · Say <b style="color:{NAVY}">"send it over email"</b>
+                    → <b>{email_config.to_address}</b>
                 </div>
             </div>
         </div></div>""",

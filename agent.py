@@ -70,11 +70,7 @@ def _state_modifier(state: dict) -> list[BaseMessage]:
         "IMPORTANT: When the user says 'today', 'this month', 'current month', "
         "'this week', or 'recent' — always use the date above. "
         "NEVER use your training-data cutoff date as 'today'.\n\n"
-        "RESPONSE STYLE REMINDER: Follow the structured business format from the system prompt. "
-        "For final answers, use the sections Question, Quick Explanation, Data, Chart, Summary, "
-        "Insights, Recommendations, and Follow-up Questions. "
-        "Always auto-generate at least one chart for quantitative answers and keep the response "
-        "comprehensive, clean, and business-ready.\n"
+        "Follow the RESPONSE CONTRACT (tiered sections) in the system prompt for every final reply.\n"
     )
     full_prompt = date_header + "\n" + SYSTEM_PROMPT
     messages = state.get("messages", [])
