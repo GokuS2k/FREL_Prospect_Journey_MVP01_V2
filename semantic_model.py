@@ -123,6 +123,21 @@ CLOSED-LOOP INTELLIGENCE PATTERN:
     for term, info in terms.items():
         defn = info.get("definition", "").replace("\n", " ").strip()
         term_lines.append(f"  - {term.upper()}: {defn}")
+    # Append hardcoded Stage vs Journey definitions so the LLM never confuses them
+    term_lines.append(
+        "  - STAGE: A snapshot phase of the relationship — a discrete point-in-time "
+        "position that a prospect occupies in the lifecycle (e.g., Stage 1 Welcome, "
+        "Stage 5 Prospect Story). There are exactly 9 stages. "
+        "Stages are STATIC positions; a prospect sits IN a stage."
+    )
+    term_lines.append(
+        "  - JOURNEY: The end-to-end path including the sequence of touchpoints, "
+        "actions, decisions, and channels that move a prospect ACROSS stages "
+        "(and sometimes back and forth). The Journey is the MOTION; "
+        "stages are the STOPS along that journey. "
+        "There are 4 journeys (J01 Welcome, J02 Nurture, J03 Conversion, J04 ReEngagement) "
+        "that together span the 9 stages."
+    )
     terminology_section = "KEY BUSINESS TERMINOLOGY (STRICTLY ENFORCE):\n" + "\n".join(term_lines)
 
     # --- Naming rules ---
@@ -484,6 +499,102 @@ DATA ACCURACY — MANDATORY RULES (violating these is a critical error):
      Area 6 — Final SFMC event data: use get_sfmc_engagement_stats (gold first, raw fallback)
 """.strip()
 
+    # --- AI Database (QA_FIPSAR_AI) ---
+    ai_database_section = """
+QA_FIPSAR_AI DATABASE — AI SCORING & INTELLIGENCE TABLES:
+
+  The QA_FIPSAR_AI database powers 3 AI use cases for prospect engagement optimization.
+  Each use case follows a pattern: FEAT_* (features) → SEM_* (current scores) → HIST_* (historical scores),
+  with AI_RUN_DETAILS tracking model runs.
+
+  DATABASE: QA_FIPSAR_AI
+  SCHEMAS: AI_FEATURES, AI_SEMANTIC, AI_PIPELINES, AI_SYNTHETIC
+
+  ── USE CASE UC03: SEND-TIME OPTIMIZATION (when to send) ──
+
+  TABLE: QA_FIPSAR_AI.AI_FEATURES.FEAT_UC03_SEND_TIME (9,289 rows)
+    Grain: One row per prospect per hour-of-day | Role: Hourly engagement features
+    Key columns: MASTER_PATIENT_ID (PK), SEND_HOUR (PK, 0-23), DAY_OF_WEEK, IS_WEEKEND,
+                 SENDS_AT_HOUR, OPENS_AT_HOUR, CLICKS_AT_HOUR, OPEN_RATE_AT_HOUR,
+                 CLICK_RATE_AT_HOUR, AGE_GROUP, REGION, PRIMARY_CHANNEL,
+                 TOTAL_SENDS_ALLHOURS, TOTAL_OPENS_ALLHOURS, OVERALL_OPEN_RATE,
+                 HOUR_VS_AVG_LIFT, BEST_HOUR_FLAG
+
+  TABLE: QA_FIPSAR_AI.AI_FEATURES.TEST_UC03_SEND_TIME (732 rows)
+    Same schema as FEAT_UC03_SEND_TIME + FEATURE_BUILT_AT (test/holdout split)
+
+  TABLE: QA_FIPSAR_AI.AI_SEMANTIC.SEM_UC03_SEND_TIME_SCORES (732 rows)
+    Grain: One row per prospect | Role: Current send-time optimization scores
+    Key columns: MASTER_PATIENT_ID (PK), BEST_SEND_HOUR, BEST_SEND_DAY, BEST_SEND_WINDOW,
+                 PREDICTED_OPEN_RATE, BASELINE_OPEN_RATE, ENGAGEMENT_LIFT, CONFIDENCE_FLAG,
+                 SCORED_AT, MODEL_VERSION, RUN_ID
+
+  TABLE: QA_FIPSAR_AI.AI_SEMANTIC.HIST_UC03_SEND_TIME_SCORES (3,094 rows)
+    Same schema as SEM_UC03_SEND_TIME_SCORES (historical archive)
+
+  ── USE CASE UCA: PROSPECT 360 SCORING (conversion, dropoff, fatigue, clustering) ──
+
+  TABLE: QA_FIPSAR_AI.AI_FEATURES.FEAT_UCA_PROSPECT_360 (852 rows)
+    Grain: One row per prospect | Role: Comprehensive prospect-level features
+    Key columns: MASTER_PATIENT_ID (PK), AGE, AGE_GROUP, STATE, REGION, PRIMARY_CHANNEL,
+                 INTAKE_COUNT, DAYS_SINCE_FIRST_INTAKE,
+                 TOTAL_SENDS, TOTAL_OPENS, TOTAL_CLICKS, TOTAL_BOUNCES, TOTAL_UNSUBS,
+                 OPEN_RATE, CLICK_TO_OPEN_RATE, UNIQUE_STAGES_REACHED, MAX_STAGE_ORDINAL,
+                 LAST_ENGAGEMENT_DAYS_AGO, HAS_CLICKED, DAYS_IN_JOURNEY, DAYS_SINCE_LAST_OPEN,
+                 ENGAGEMENT_DECLINE_FLAG, CONVERTED_FLAG, JOURNEY_DROPPED_FLAG, EMAIL_FATIGUED_FLAG,
+                 FEATURE_BUILT_AT
+
+  TABLE: QA_FIPSAR_AI.AI_FEATURES.TEST_UCA_PROSPECT_360 (758 rows)
+    Same schema as FEAT_UCA_PROSPECT_360 without FEATURE_BUILT_AT (test/holdout split)
+
+  TABLE: QA_FIPSAR_AI.AI_SEMANTIC.SEM_UCA_PROSPECT_360_SCORES (758 rows)
+    Grain: One row per prospect | Role: Current prospect 360 scores
+    Key columns: MASTER_PATIENT_ID (PK), CONVERSION_PROBABILITY, CONVERSION_RISK_TIER,
+                 DROPOFF_PROBABILITY, DROPOFF_RISK_TIER, FATIGUE_SCORE, IS_FATIGUED,
+                 CLUSTER_SEGMENT_ID, CLUSTER_LABEL, SEND_STATUS, COMPOSITE_HEALTH_SCORE,
+                 RECOMMENDED_ACTION, SCORED_AT, MODEL_VERSION, RUN_ID
+
+  TABLE: QA_FIPSAR_AI.AI_SEMANTIC.HIST_UCA_PROSPECT_360_SCORES (3,314 rows)
+    Same schema as SEM_UCA_PROSPECT_360_SCORES (historical archive)
+
+  ── USE CASE UCB: SIGNAL TRUST SCORING (bot detection, anomaly flagging) ──
+
+  TABLE: QA_FIPSAR_AI.AI_SEMANTIC.SEM_UCB_SIGNAL_TRUST_SCORES (10,627 rows)
+    Grain: One row per engagement event | Role: Current signal trust scores
+    Key columns: ENGAGEMENT_KEY (PK), SUBSCRIBER_KEY, MASTER_PATIENT_ID, JOB_ID,
+                 EVENT_TYPE, BOT_PROBABILITY, IS_BOT_FLAG, IS_ANOMALY, ANOMALY_SEVERITY,
+                 ANOMALY_TYPE, BEST_SEND_HOUR, BEST_SEND_DAY, TRUST_SCORE,
+                 SCORED_AT, MODEL_VERSION, RUN_ID
+
+  TABLE: QA_FIPSAR_AI.AI_SEMANTIC.HIST_UCB_SIGNAL_TRUST_SCORES (49,332 rows)
+    Same schema as SEM_UCB_SIGNAL_TRUST_SCORES (historical archive)
+
+  ── MODEL RUN METADATA ──
+
+  TABLE: QA_FIPSAR_AI.AI_SEMANTIC.AI_RUN_DETAILS (3 rows)
+    Grain: One row per model run | Role: Current run metadata
+    Key columns: RUN_ID (PK), MODEL_VERSION, SCORED_AT, TOTAL_PROSPECTS_SCORED, AUC_ROC
+
+  TABLE: QA_FIPSAR_AI.AI_SEMANTIC.HIST_AI_RUN_DETAILS (13 rows)
+    Same schema (historical archive of all model runs)
+
+  ── AI QUERY ROUTING ──
+
+  When the user asks about AI scores, predictions, or intelligence:
+    - "What is the conversion/dropoff probability?" → get_ai_intelligence or run_sql on SEM_UCA_PROSPECT_360_SCORES
+    - "When should we send emails?" / "best send time" → run_sql on SEM_UC03_SEND_TIME_SCORES
+    - "Are there bots?" / "signal trust" / "anomalies in engagement" → run_sql on SEM_UCB_SIGNAL_TRUST_SCORES
+    - "Show AI model performance" / "model accuracy" → run_sql on AI_RUN_DETAILS (AUC_ROC)
+    - "Historical AI scores" / "how have scores changed" → use HIST_* tables
+    - "Prospect health score" / "recommended action" → SEM_UCA_PROSPECT_360_SCORES.COMPOSITE_HEALTH_SCORE, RECOMMENDED_ACTION
+    - "Fatigued prospects" / "email fatigue" → SEM_UCA_PROSPECT_360_SCORES WHERE IS_FATIGUED = TRUE
+    - "Which cluster/segment?" → SEM_UCA_PROSPECT_360_SCORES.CLUSTER_SEGMENT_ID, CLUSTER_LABEL
+    - For prospect-level lookup: JOIN any SEM_* table ON MASTER_PATIENT_ID = DIM_PROSPECT.MASTER_PATIENT_ID
+
+  IMPORTANT: SEM_* tables contain CURRENT scores. Use HIST_* tables for longitudinal/trend analysis.
+  Always use get_ai_intelligence first if the user asks a broad "what AI data is available" question.
+""".strip()
+
     # --- Charting guidance ---
     charting_rules = """
 CHARTING RULES — when to generate charts and which tool to use:
@@ -518,23 +629,15 @@ CHARTING RULES — when to generate charts and which tool to use:
     ► orientation="h" for horizontal bars (best when category labels are long text)
     ► Use for: custom state breakdowns, consent rate pie, monthly trend by channel, etc.
 
-  ── AUTO-CHART RULE ──
-  For any quantitative answer (counts, rates, comparisons), ALWAYS add a chart automatically
-  even if the user did not explicitly ask for one. A table alone is less engaging than
-  table + chart together. Default pairings:
-    - Funnel question      → chart_funnel or chart_funnel_waterfall
-    - Rejection question   → chart_rejections
-    - SFMC events question → chart_engagement or chart_email_kpi_scorecard
-    - Trend question       → chart_daily_engagement_trend or chart_intake_trend
-    - Stage question       → chart_journey_stage_progression or chart_sfmc_stage_fishbone
-    - "Where are we losing?"→ chart_funnel_waterfall
-    - Bounce question      → chart_bounce_analysis
-    - Channel question     → chart_prospect_channel_mix
+  ── DYNAMIC CHART RULE ──
+  Charts must only be shown when it is absolutely necessary to visualize a specific pattern or when explicitly requested.
+  Do NOT blindly default to charts for simple counts.
+  When a chart IS necessary, the representation should be dynamic based on the data & pattern. 
+  Favor the `chart_smart` tool to automatically select the best visual representation (bar, line, pie, scatter) 
+  unless one of the specific purpose-built tools maps perfectly to the user's request.
 
   ── MULTI-CHART RESPONSES ──
-  For a "full picture" or executive-level question, generate 2–3 charts, each covering a
-  different dimension (e.g., funnel chart + engagement chart + KPI scorecard together).
-  More visuals = richer, more useful answer.
+  For a "full picture" or executive-level question, generate visuals only if they each add distinct and necessary insights.
 """.strip()
 
     # --- Output formatting rules (tiered — dense, no redundant sections) ---
@@ -573,9 +676,12 @@ Do NOT restate the user's question in a separate "## Question" section unless th
 Do not duplicate the same point in "Answer" and "Insights". Merge Summary into Answer/Evidence/Insights as appropriate.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-DEPTH
+DEPTH & TOKENS (DYNAMIC RESPONSE LENGTH)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  ✦ Prefer dense output: default target ~300–700 tokens; extend only when the question is broad or multi-part.
+  ✦ Configure your tokens and response depth dynamically based on the user's request:
+    - If the user asks for a 'brief' response, keep the output extremely concise (~50 tokens), skipping non-essential sections.
+    - If the user asks for a 'short' response, keep it strictly to the core numbers and direct answer (~100-150 tokens).
+    - Otherwise, default to a balanced output (~300-700 tokens), extending only when the question is broad or multi-part.
   ✦ Simple lookups: keep Answer + Evidence + Chart minimal; skip Insights/Follow-ups unless useful.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -584,6 +690,74 @@ TONE AND QUALITY
   ✦ Direct, insight-led business analyst tone. No "Great question". Never start with "I".
   ✦ Numbers: comma-separated thousands; percentages one decimal (94.3%).
   ✦ Never state a metric without a tool call in this turn. Re-query if filters change.
+""".strip()
+
+    # --- Perfect answers for key questions ---
+    perfect_answers_guide = """
+GUARANTEED PERFECT ANSWERS FOR KEY QUESTIONS:
+When the user asks any of the following specific questions, you must follow the mapped
+tool usage and rules perfectly.
+
+CRITICAL DEFINITIONS (never confuse these):
+  STAGE = A snapshot phase of the relationship. There are exactly 9 stages.
+          A prospect sits IN a stage. Stages are static positions.
+  JOURNEY = The end-to-end path (touchpoints, actions, decisions, channels) that
+            MOVES a prospect across stages (and sometimes back). The journey is the
+            motion; stages are the stops.
+  There are 4 journeys (J01 Welcome → J02 Nurture → J03 Conversion → J04 ReEngagement)
+  spanning the 9 stages. When the user says "this prospect journey" they mean the
+  FULL end-to-end journey across all 9 stages.
+
+IMPORTANT: Analysing the 9 stages is MORE important than analysing individual
+journeys, because the stages reveal WHERE a prospect is, while the journeys
+reveal HOW they got there.
+
+1. "How many prospects have entered this prospect journey?"
+   - Tools: Call get_funnel_metrics. Report the F02 Valid Prospects count as the
+     number who entered the journey.
+   - Rule: "Entered the journey" = became a Valid Prospect (passed intake mastering).
+
+2. "Where are prospects dropping off in this prospect journey?"
+   - Tools: Call chart_journey_stage_progression (Stages 1-9 overview).
+     For exact per-stage numbers on a date, call get_sfmc_stage_suppression(target_date)
+     or chart_sfmc_stage_fishbone(target_date). For funnel-level drops, use
+     chart_funnel_waterfall.
+   - Rule: Report drops STAGE BY STAGE (1 → 2 → … → 9). The biggest absolute
+     drop between consecutive stages is the primary bottleneck. Focus on stages,
+     not journeys.
+
+3. "Are there any anomalies or unusual patterns in this prospect journey?"
+   - Tools: Call get_drop_analysis (if date given), get_pipeline_observability,
+     and get_sfmc_engagement_stats.
+   - Rule: Flag any of: sudden inter-stage drop > 20%, suppression spikes,
+     bounce rate > 10%, unexpected zero-volume stages, or pipeline DQ failures.
+
+4. "What percentage of prospects are progressing through each step of the prospect journey?"
+   - Tools: Call chart_journey_stage_progression, or run a run_sql query against
+     RAW_SFMC_PROSPECT_JOURNEY_DETAILS to compute (Stage N reached / Stage N-1 reached)
+     for all 9 stages.
+   - Rule: Show a table with columns: Stage | Reached | % of Previous Stage.
+     The first stage denominator is Valid Prospects (F02).
+
+5. "Is there any missing or inconsistent data affecting this prospect journey?"
+   - Tools: Call get_sfmc_prospect_outbound_match and get_pipeline_observability.
+   - Rule: Report: (a) DIM_PROSPECT records NOT in RAW_SFMC_PROSPECT_C (export gap),
+     (b) RAW_SFMC_PROSPECT_C records NOT in DIM_PROSPECT (integrity issue),
+     (c) any pipeline DQ rule violations.
+
+6. "What is the current engagement rate for this prospect journey?"
+   - Tools: Call get_sfmc_engagement_stats and chart_email_kpi_scorecard.
+   - Rule: Calculate and state Open Rate = Opens/Sent, Click Rate = Clicks/Sent,
+     Bounce Rate = Bounces/Sent as percentages. Do NOT just list raw volumes.
+
+7. "What actions can help improve this prospect journey?"
+   - Tools: Call get_funnel_metrics, chart_journey_stage_progression, and
+     get_sfmc_engagement_stats to gather current data.
+   - Rule: Provide exactly 3 concrete, data-backed actions targeting the biggest
+     bottlenecks found across the 9 stages and engagement metrics
+     (e.g., high Stage 3 suppression → fix consent data upstream;
+      low Stage 5 opens → A/B test subject lines;
+      Stage 8-9 zero reach → review re-engagement trigger logic).
 """.strip()
 
     # --- Compose final prompt ---
@@ -601,8 +775,10 @@ TONE AND QUALITY
         answering_section,
         sql_instructions,
         accuracy_rules,
+        ai_database_section,
         charting_rules,
         formatting_rules,
+        perfect_answers_guide,
     ])
 
     return prompt

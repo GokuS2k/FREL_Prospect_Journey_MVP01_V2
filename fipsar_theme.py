@@ -261,6 +261,29 @@ html, body, [class*="css"] {{
     border-color: rgba(255,255,255,0.25) !important;
 }}
 
+/* Fix for invisible text on buttons and captions inside assistant messages */
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) .stButton > button p,
+[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) .stButton > button p,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) .stButton > button,
+[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) .stButton > button {{
+    color: {NAVY} !important;
+    background: rgba(255,255,255,0.92) !important;
+    border: 1px solid rgba(0,51,160,0.25) !important;
+}}
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) .stButton > button:hover,
+[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) .stButton > button:hover {{
+    background: #ffffff !important;
+    border-color: {NAVY} !important;
+    color: {NAVY} !important;
+}}
+/* "Next questions" caption label */
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) [data-testid="stCaptionContainer"],
+[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) [data-testid="stCaptionContainer"],
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) [data-testid="stCaptionContainer"] p,
+[data-testid="stChatMessage"]:has([aria-label*="assistant" i]) [data-testid="stCaptionContainer"] p {{
+    color: rgba(255,255,255,0.85) !important;
+}}
+
 [data-testid="stChatInput"] {{
     border-radius: 28px !important;
     box-shadow: {SHADOW_MD} !important;

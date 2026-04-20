@@ -79,11 +79,19 @@ semantic_layer:
           current tables is MASTER_PATIENT_ID, but business meaning in this MVP is Master Prospect ID.
       journey:
         definition: >
-          A business-defined multi-stage communication flow within SFMC. Example journeys include
-          Welcome, Nurture, Conversion, and Re-engagement.
+          The end-to-end path including the sequence of touchpoints, actions, decisions, and channels
+          that move a prospect across stages (and sometimes back and forth). The Journey is the MOTION;
+          stages are the STOPS along that journey. There are 4 journeys (J01 Welcome, J02 Nurture,
+          J03 Conversion, J04 ReEngagement) that together span the 9 stages.
+        allowed_synonyms:
+          - "prospect journey"
+          - "communication path"
       stage:
         definition: >
-          A numbered step within a Journey, usually represented by an email touchpoint and associated stage name.
+          A snapshot phase of the relationship — a discrete point-in-time position that a prospect
+          occupies in the lifecycle. There are exactly 9 stages. Stages are STATIC positions;
+          a prospect sits IN a stage. Analysing stages reveals WHERE a prospect is, while
+          analysing journeys reveals HOW they got there.
       suppression:
         definition: >
           A business or operational outcome where an intended send did not proceed and the record
@@ -607,30 +615,152 @@ semantic_layer:
                   - "REJECTED_AT"
 
       QA_FIPSAR_AI:
-        description: "AI feature engineering and semantic scoring layer"
+        description: >
+          AI feature engineering, scoring, and semantic intelligence layer.
+          Powers 3 use cases: UC03 (Send-Time Optimization), UCA (Prospect 360 Scoring),
+          UCB (Signal Trust). Each follows FEAT_* (features) → SEM_* (current scores)
+          → HIST_* (historical archive), with AI_RUN_DETAILS tracking model runs.
         schemas:
           AI_FEATURES:
             tables:
-              QA_FIPSAR_AI.AI_FEATURES.FEAT_UCA_PROSPECT_360:
-                grain: "One row per Prospect feature snapshot"
-                business_role: "Prospect 360 features"
               QA_FIPSAR_AI.AI_FEATURES.FEAT_UC03_SEND_TIME:
-                grain: "One row per Prospect/time optimization feature entity"
-                business_role: "Send time optimization features"
+                grain: "One row per prospect per hour-of-day (PK: MASTER_PATIENT_ID + SEND_HOUR)"
+                business_role: "Hourly engagement features for send-time optimization"
+                key_columns:
+                  - "MASTER_PATIENT_ID"
+                  - "SEND_HOUR"
+                  - "DAY_OF_WEEK"
+                  - "IS_WEEKEND"
+                  - "SENDS_AT_HOUR"
+                  - "OPENS_AT_HOUR"
+                  - "CLICKS_AT_HOUR"
+                  - "OPEN_RATE_AT_HOUR"
+                  - "CLICK_RATE_AT_HOUR"
+                  - "AGE_GROUP"
+                  - "REGION"
+                  - "PRIMARY_CHANNEL"
+                  - "TOTAL_SENDS_ALLHOURS"
+                  - "TOTAL_OPENS_ALLHOURS"
+                  - "OVERALL_OPEN_RATE"
+                  - "HOUR_VS_AVG_LIFT"
+                  - "BEST_HOUR_FLAG"
+              QA_FIPSAR_AI.AI_FEATURES.TEST_UC03_SEND_TIME:
+                grain: "Test/holdout split of FEAT_UC03_SEND_TIME (same schema + FEATURE_BUILT_AT)"
+                business_role: "Send-time feature test set"
+              QA_FIPSAR_AI.AI_FEATURES.FEAT_UCA_PROSPECT_360:
+                grain: "One row per prospect (PK: MASTER_PATIENT_ID)"
+                business_role: "Comprehensive prospect-level features for conversion/dropoff/fatigue modeling"
+                key_columns:
+                  - "MASTER_PATIENT_ID"
+                  - "AGE"
+                  - "AGE_GROUP"
+                  - "STATE"
+                  - "REGION"
+                  - "PRIMARY_CHANNEL"
+                  - "INTAKE_COUNT"
+                  - "DAYS_SINCE_FIRST_INTAKE"
+                  - "TOTAL_SENDS"
+                  - "TOTAL_OPENS"
+                  - "TOTAL_CLICKS"
+                  - "TOTAL_BOUNCES"
+                  - "TOTAL_UNSUBS"
+                  - "OPEN_RATE"
+                  - "CLICK_TO_OPEN_RATE"
+                  - "UNIQUE_STAGES_REACHED"
+                  - "MAX_STAGE_ORDINAL"
+                  - "LAST_ENGAGEMENT_DAYS_AGO"
+                  - "HAS_CLICKED"
+                  - "DAYS_IN_JOURNEY"
+                  - "DAYS_SINCE_LAST_OPEN"
+                  - "ENGAGEMENT_DECLINE_FLAG"
+                  - "CONVERTED_FLAG"
+                  - "JOURNEY_DROPPED_FLAG"
+                  - "EMAIL_FATIGUED_FLAG"
+                  - "FEATURE_BUILT_AT"
+              QA_FIPSAR_AI.AI_FEATURES.TEST_UCA_PROSPECT_360:
+                grain: "Test/holdout split of FEAT_UCA_PROSPECT_360 (same schema, no FEATURE_BUILT_AT)"
+                business_role: "Prospect 360 feature test set"
           AI_SEMANTIC:
             tables:
-              QA_FIPSAR_AI.AI_SEMANTIC.SEM_UCA_PROSPECT_360_SCORES:
-                grain: "One row per Prospect scoring output"
-                business_role: "Prospect 360 AI scores"
               QA_FIPSAR_AI.AI_SEMANTIC.SEM_UC03_SEND_TIME_SCORES:
-                grain: "One row per send-time score output"
-                business_role: "Send time optimization scores"
+                grain: "One row per prospect (PK: MASTER_PATIENT_ID)"
+                business_role: "Current send-time optimization scores — predicted best hour/day to send"
+                key_columns:
+                  - "MASTER_PATIENT_ID"
+                  - "BEST_SEND_HOUR"
+                  - "BEST_SEND_DAY"
+                  - "BEST_SEND_WINDOW"
+                  - "PREDICTED_OPEN_RATE"
+                  - "BASELINE_OPEN_RATE"
+                  - "ENGAGEMENT_LIFT"
+                  - "CONFIDENCE_FLAG"
+                  - "SCORED_AT"
+                  - "MODEL_VERSION"
+                  - "RUN_ID"
+              QA_FIPSAR_AI.AI_SEMANTIC.HIST_UC03_SEND_TIME_SCORES:
+                grain: "Historical archive of send-time scores (same schema as SEM_UC03)"
+                business_role: "Send-time score history for longitudinal analysis"
+              QA_FIPSAR_AI.AI_SEMANTIC.SEM_UCA_PROSPECT_360_SCORES:
+                grain: "One row per prospect (PK: MASTER_PATIENT_ID)"
+                business_role: "Current prospect 360 scores — conversion, dropoff, fatigue, clustering"
+                key_columns:
+                  - "MASTER_PATIENT_ID"
+                  - "CONVERSION_PROBABILITY"
+                  - "CONVERSION_RISK_TIER"
+                  - "DROPOFF_PROBABILITY"
+                  - "DROPOFF_RISK_TIER"
+                  - "FATIGUE_SCORE"
+                  - "IS_FATIGUED"
+                  - "CLUSTER_SEGMENT_ID"
+                  - "CLUSTER_LABEL"
+                  - "SEND_STATUS"
+                  - "COMPOSITE_HEALTH_SCORE"
+                  - "RECOMMENDED_ACTION"
+                  - "SCORED_AT"
+                  - "MODEL_VERSION"
+                  - "RUN_ID"
+              QA_FIPSAR_AI.AI_SEMANTIC.HIST_UCA_PROSPECT_360_SCORES:
+                grain: "Historical archive of prospect 360 scores (same schema as SEM_UCA)"
+                business_role: "Prospect 360 score history for longitudinal analysis"
               QA_FIPSAR_AI.AI_SEMANTIC.SEM_UCB_SIGNAL_TRUST_SCORES:
-                grain: "One row per signal trust/confidence output"
-                business_role: "Signal trust and reliability scoring"
+                grain: "One row per engagement event (PK: ENGAGEMENT_KEY)"
+                business_role: "Current signal trust scores — bot detection, anomaly flagging per event"
+                key_columns:
+                  - "ENGAGEMENT_KEY"
+                  - "SUBSCRIBER_KEY"
+                  - "MASTER_PATIENT_ID"
+                  - "JOB_ID"
+                  - "EVENT_TYPE"
+                  - "BOT_PROBABILITY"
+                  - "IS_BOT_FLAG"
+                  - "IS_ANOMALY"
+                  - "ANOMALY_SEVERITY"
+                  - "ANOMALY_TYPE"
+                  - "BEST_SEND_HOUR"
+                  - "BEST_SEND_DAY"
+                  - "TRUST_SCORE"
+                  - "SCORED_AT"
+                  - "MODEL_VERSION"
+                  - "RUN_ID"
+                join_notes:
+                  - "MASTER_PATIENT_ID = DIM_PROSPECT.MASTER_PATIENT_ID for prospect-level joins"
+                  - "JOB_ID links to DIM_SFMC_JOB.JOB_ID for journey/stage context"
+                  - "SUBSCRIBER_KEY = MASTER_PATIENT_ID (same FIP... value)"
+              QA_FIPSAR_AI.AI_SEMANTIC.HIST_UCB_SIGNAL_TRUST_SCORES:
+                grain: "Historical archive of signal trust scores (same schema as SEM_UCB)"
+                business_role: "Signal trust score history for longitudinal analysis"
               QA_FIPSAR_AI.AI_SEMANTIC.AI_RUN_DETAILS:
-                grain: "One row per AI run or model execution detail"
-                business_role: "AI run lineage and diagnostics"
+                grain: "One row per AI model run (PK: RUN_ID)"
+                business_role: "Current model run metadata — version, timestamp, performance"
+                key_columns:
+                  - "RUN_ID"
+                  - "MODEL_VERSION"
+                  - "SCORED_AT"
+                  - "TOTAL_PROSPECTS_SCORED"
+                  - "AUC_ROC"
+              QA_FIPSAR_AI.AI_SEMANTIC.HIST_AI_RUN_DETAILS:
+                grain: "Historical archive of all model runs (same schema as AI_RUN_DETAILS)"
+                business_role: "Model run history for performance tracking over time"
 
   business_rules:
     intake_mastering_rules:

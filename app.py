@@ -461,8 +461,8 @@ with tab_chat:
                     if msg["role"] == "assistant":
                         _body, _fus = _split_followups_from_assistant(msg["content"])
                         st.markdown(_body)
-                        for fig in msg.get("charts", []):
-                            st.plotly_chart(fig, use_container_width=True)
+                        for _ci, fig in enumerate(msg.get("charts", [])):
+                            st.plotly_chart(fig, use_container_width=True, key=f"chart_hist_{_mi}_{_ci}")
                         if _fus:
                             st.caption("Next questions")
                             for _fj, _q in enumerate(_fus):
@@ -491,8 +491,8 @@ with tab_chat:
                 pending_charts = chart_store.pop_all(st.session_state.session_id)
                 _b_live, _fu_live = _split_followups_from_assistant(response)
                 st.markdown(_b_live)
-                for fig in pending_charts:
-                    st.plotly_chart(fig, use_container_width=True)
+                for _ci, fig in enumerate(pending_charts):
+                    st.plotly_chart(fig, use_container_width=True, key=f"chart_live_{_ci}")
                 if _fu_live:
                     st.caption("Next questions")
                     for _fj, _q in enumerate(_fu_live):
